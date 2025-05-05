@@ -63,7 +63,7 @@ graph LR
     NATS -->|Job Request| Sched(Scheduler);
     Sched -->|Find Provider| Reg(Provider Registry);
     Reg -->|DB Query| RegDB[(Registry DB)];
-    Sched -->|Assign Job (NATS/gRPC)| Daemon(dante-daemon);
+    Sched -->|Assign Job (NATS/gRPC)| Daemon[dante-daemon];
     Daemon -->|Execute Job| GPU[Provider GPU];
     GW -->|Proxy Request| TargetSvc(Backend Service);
     TargetSvc -->|DB/Other| SvcDB[(Service DB)];
