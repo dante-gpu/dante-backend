@@ -52,32 +52,6 @@ The backend is designed as a collection of independent services communicating vi
     *   **Description:** Tracks resource usage (GPU time, storage), generates invoices for requesters, and handles payouts to providers. Requires integration with payment gateways (e.g., Stripe, PayPal).
     *   **Status:** **Planned (Post-MVP)**
 
-**(Conceptual Flow)**
-
-```mermaid
-graph LR
-    Client -->|HTTPS Request| GW(API Gateway);
-    GW -->|Verify Credentials| Auth(Auth Service);
-    Auth -->|DB Query| AuthDB[(Auth DB)];
-    GW -->|Publish Job| NATS(NATS JetStream);
-    NATS -->|Job Request| Sched(Scheduler);
-    Sched -->|Find Provider| Reg(Provider Registry);
-    Reg -->|DB Query| RegDB[(Registry DB)];
-    Sched -->|Assign Job (NATS/gRPC)| Daemon[dante-daemon];
-    Daemon -->|Execute Job| GPU[Provider GPU];
-    GW -->|Proxy Request| TargetSvc(Backend Service);
-    TargetSvc -->|DB/Other| SvcDB[(Service DB)];
-    subgraph Monitoring
-        Mon(Monitoring/Logging)
-    end
-    GW --> Mon;
-    Auth --> Mon;
-    Sched --> Mon;
-    Reg --> Mon;
-    Daemon --> Mon;
-    TargetSvc --> Mon;
-```
-
 ---
 
 ## Getting Started
