@@ -4,15 +4,18 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/dante-gpu/dante-backend/api-gateway/internal/config"
+	consul_client "github.com/dante-gpu/dante-backend/api-gateway/internal/consul"
 	"github.com/dante-gpu/dante-backend/api-gateway/internal/handlers"
+	"github.com/dante-gpu/dante-backend/api-gateway/internal/loadbalancer"
 	customMiddleware "github.com/dante-gpu/dante-backend/api-gateway/internal/middleware" // Alias to avoid conflict
 	nats_client "github.com/dante-gpu/dante-backend/api-gateway/internal/nats"
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
-	"github.com/nats-io/nats.go" // Import nats package
+	"github.com/go-chi/chi/v5/middleware" // Import consul api
+	"github.com/nats-io/nats.go"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -37,17 +40,18 @@ func main() {
 	// == Establish NATS Connection ==
 	nc, err := nats_client.Connect(cfg.NatsAddress, logger)
 	if err != nil {
-		// Log the error but maybe allow the server to start without NATS?
-		// For now, let's make it fatal as job submission is core.
 		logger.Fatal("Failed to establish initial NATS connection", zap.Error(err))
 	}
-	defer nc.Close() // Ensure NATS connection is closed on shutdown
+	defer nc.Close()
 
-	// Optional: Connect to JetStream if needed
-	// js, err := nats_client.ConnectJetStream(nc, logger)
-	// if err != nil {
-	// 	logger.Fatal("Failed to establish NATS JetStream connection", zap.Error(err))
-	// }
+	// == Establish Consul Connection ==
+	consulClient, err := consul_client.Connect(cfg.ConsulAddress, logger)
+	if err != nil {
+		// Log the error, but the gateway might still be partially useful (e.g., auth, direct NATS jobs)
+		// Let's make it non-fatal for now, but health check should reflect this.
+		logger.Error("Failed to establish initial Consul connection", zap.Error(err))
+		// Consider adding a flag or status to indicate Consul failure.
+	}
 
 	// I need to set up the router.
 	r := chi.NewRouter()
@@ -55,32 +59,57 @@ func main() {
 	// I should add basic middleware.
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
-	// Replace chi logger with my custom Zap logger middleware
 	r.Use(NewStructuredLogger(logger))
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(cfg.RequestTimeout))
 
 	// I need to create instances of my handlers.
 	authHandler := handlers.NewAuthHandler(logger, cfg)
-	jobHandler := handlers.NewJobHandler(logger, cfg, nc) // Pass NATS connection
+	jobHandler := handlers.NewJobHandler(logger, cfg, nc)
+	// Create load balancer and proxy handler (even if Consul connection failed, to avoid nil pointers)
+	lb := loadbalancer.NewRoundRobin()
+	proxyHandler := handlers.NewProxyHandler(logger, cfg, consulClient, lb)
 
 	// == Public Routes ==
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
-		// Check NATS connection status as part of health <3 ?
 		healthStatus := http.StatusOK
 		healthMsg := "API Gateway is healthy"
+		consulOk := false
+
+		// Check NATS
 		if nc.Status() != nats.CONNECTED {
 			healthStatus = http.StatusServiceUnavailable
-			healthMsg = "API Gateway is running, but NATS connection is down"
-			logger.Warn("Health check reporting NATS is not connected", zap.String("nats_status", nc.Status().String()))
+			healthMsg = "NATS connection is down."
+			logger.Warn("Health check: NATS is not connected", zap.String("nats_status", nc.Status().String()))
+		} else {
+			healthMsg += " NATS: OK."
+		}
+
+		// Check Consul (only if client was created)
+		if consulClient != nil {
+			_, err := consulClient.Agent().Self() // Ping Consul
+			if err != nil {
+				healthStatus = http.StatusServiceUnavailable
+				healthMsg += " Consul connection failed."
+				logger.Warn("Health check: Consul ping failed", zap.Error(err))
+			} else {
+				healthMsg += " Consul: OK."
+				consulOk = true
+			}
+		} else {
+			healthStatus = http.StatusServiceUnavailable
+			healthMsg += " Consul client not initialized."
+			logger.Warn("Health check: Consul client is nil")
 		}
 
 		logger.Info("Health check endpoint hit",
 			zap.String("path", r.URL.Path),
 			zap.String("nats_status", nc.Status().String()),
+			zap.Bool("consul_ok", consulOk),
+			zap.Int("overall_status", healthStatus),
 		)
 		w.WriteHeader(healthStatus)
-		fmt.Fprintf(w, healthMsg)
+		fmt.Fprintf(w, strings.TrimSpace(healthMsg))
 	})
 
 	// == Authentication Routes ==
@@ -90,7 +119,6 @@ func main() {
 
 		// Routes requiring authentication
 		r.Group(func(r chi.Router) {
-			// I need to apply the JWT authentication middleware here.
 			r.Use(customMiddleware.Authenticator(logger, cfg.JwtSecret))
 			r.Get("/profile", authHandler.Profile)
 		})
@@ -98,7 +126,6 @@ func main() {
 
 	// == API V1 Routes (Protected) ==
 	r.Route("/api/v1", func(r chi.Router) {
-		// Apply authentication middleware to all v1 routes
 		r.Use(customMiddleware.Authenticator(logger, cfg.JwtSecret))
 
 		// Job submission routes
@@ -113,9 +140,10 @@ func main() {
 		// })
 	})
 
-	// == Service Proxy Route (Example - potentially protected) ==
-	// proxyHandler := handlers.NewProxyHandler(logger, cfg) // Needs Consul client etc.
-	// r.HandleFunc("/services/{serviceName}/*", proxyHandler.ServeHTTP)
+	// == Service Proxy Route ==
+	// HandleFunc matches all methods. Use Method specific handlers (e.g., r.Get) if needed.
+	// The "*" in the pattern is crucial for matching subpaths.
+	r.HandleFunc("/services/{serviceName}/*", proxyHandler.ServeHTTP)
 
 	// == Admin Dashboard Route (Example - protected) ==
 	// r.Group(func(r chi.Router) {
