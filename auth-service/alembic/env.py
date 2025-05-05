@@ -2,20 +2,21 @@ import os
 import sys
 from logging.config import fileConfig
 
+# I need to ensure the directory containing 'app' (the auth-service root)
+# is on the Python path when Alembic runs.
+# Explicitly adding the current working directory (which should be auth-service)
+# is often the most reliable way.
+CWD = os.getcwd()
+if CWD not in sys.path:
+    sys.path.insert(0, CWD)
+
+# Now the imports should work
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
-
 from alembic import context
-
-# I need to add my application's root directory to the Python path
-# so Alembic can find the models and config.
-# This assumes env.py is run from the 'auth-service' directory where alembic.ini resides.
-APP_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')) # Go up two levels from alembic/env.py
-sys.path.insert(0, APP_ROOT)
-
-# I need to import my SQLAlchemy Base metadata and the application settings.
 from app.db.base import Base # This imports all models defined in app/db/models/
 from app.core.config import settings
+
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -67,7 +68,7 @@ def run_migrations_offline() -> None:
         # Use the same naming convention as in base_class.py
         # This might require defining the convention dict here or importing it
         # For simplicity, relying on metadata's convention for now, but might need explicit set.
-        # naming_convention=Base.metadata.naming_convention 
+        # naming_convention=Base.metadata.naming_convention
     )
 
     with context.begin_transaction():
