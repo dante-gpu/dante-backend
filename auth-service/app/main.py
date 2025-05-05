@@ -3,7 +3,7 @@ from starlette.middleware.cors import CORSMiddleware
 
 # I need to import my settings and potentially API routers later
 from app.core.config import settings
-# from app.api.v1.api import api_router
+from app.api.v1.api import api_router
 
 # I should create the FastAPI application instance.
 app = FastAPI(
@@ -26,7 +26,7 @@ if settings.BACKEND_CORS_ORIGINS:
 # --- Router Setup ---
 
 # I will include the main API router here later.
-# app.include_router(api_router, prefix=settings.API_V1_STR)
+app.include_router(api_router, prefix=settings.API_V1_STR)
 
 # --- Basic Root Endpoint ---
 
