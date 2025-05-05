@@ -9,8 +9,10 @@ import (
 	"github.com/dante-gpu/dante-backend/api-gateway/internal/config"
 	"github.com/dante-gpu/dante-backend/api-gateway/internal/handlers"
 	customMiddleware "github.com/dante-gpu/dante-backend/api-gateway/internal/middleware" // Alias to avoid conflict
+	nats_client "github.com/dante-gpu/dante-backend/api-gateway/internal/nats"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/nats-io/nats.go" // Import nats package
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -32,6 +34,21 @@ func main() {
 	}
 	defer logger.Sync() // Flushing buffer, important!
 
+	// == Establish NATS Connection ==
+	nc, err := nats_client.Connect(cfg.NatsAddress, logger)
+	if err != nil {
+		// Log the error but maybe allow the server to start without NATS?
+		// For now, let's make it fatal as job submission is core.
+		logger.Fatal("Failed to establish initial NATS connection", zap.Error(err))
+	}
+	defer nc.Close() // Ensure NATS connection is closed on shutdown
+
+	// Optional: Connect to JetStream if needed
+	// js, err := nats_client.ConnectJetStream(nc, logger)
+	// if err != nil {
+	// 	logger.Fatal("Failed to establish NATS JetStream connection", zap.Error(err))
+	// }
+
 	// I need to set up the router.
 	r := chi.NewRouter()
 
@@ -45,13 +62,25 @@ func main() {
 
 	// I need to create instances of my handlers.
 	authHandler := handlers.NewAuthHandler(logger, cfg)
+	jobHandler := handlers.NewJobHandler(logger, cfg, nc) // Pass NATS connection
 
 	// == Public Routes ==
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
-		// Use Zap logger for endpoint logging
-		logger.Info("Health check endpoint hit", zap.String("path", r.URL.Path))
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, "API Gateway is healthy")
+		// Check NATS connection status as part of health <3 ?
+		healthStatus := http.StatusOK
+		healthMsg := "API Gateway is healthy"
+		if nc.Status() != nats.CONNECTED {
+			healthStatus = http.StatusServiceUnavailable
+			healthMsg = "API Gateway is running, but NATS connection is down"
+			logger.Warn("Health check reporting NATS is not connected", zap.String("nats_status", nc.Status().String()))
+		}
+
+		logger.Info("Health check endpoint hit",
+			zap.String("path", r.URL.Path),
+			zap.String("nats_status", nc.Status().String()),
+		)
+		w.WriteHeader(healthStatus)
+		fmt.Fprintf(w, healthMsg)
 	})
 
 	// == Authentication Routes ==
@@ -67,22 +96,22 @@ func main() {
 		})
 	})
 
-	// == API V1 Routes (Example structure - protected) ==
-	// r.Route("/api/v1", func(r chi.Router) {
-	//     r.Use(customMiddleware.Authenticator(logger, cfg.JwtSecret))
-	//
-	//     // Job submission routes (placeholder)
-	//     // jobHandler := handlers.NewJobHandler(logger, cfg, natsClient) // Need NATS client
-	//     // r.Post("/jobs", jobHandler.SubmitJob)
-	//     // r.Get("/jobs/{jobID}", jobHandler.GetJobStatus)
-	//     // r.Delete("/jobs/{jobID}", jobHandler.CancelJob)
-	//
-	//     // Admin routes (placeholder)
-	//     // r.Group(func(r chi.Router) {
-	//     //    r.Use(customMiddleware.RequireRole("admin")) // Role checking middleware needed
-	//     //    r.Get("/admin-stats", handlers.GetAdminStats)
-	//     // })
-	// })
+	// == API V1 Routes (Protected) ==
+	r.Route("/api/v1", func(r chi.Router) {
+		// Apply authentication middleware to all v1 routes
+		r.Use(customMiddleware.Authenticator(logger, cfg.JwtSecret))
+
+		// Job submission routes
+		r.Post("/jobs", jobHandler.SubmitJob)
+		r.Get("/jobs/{jobID}", jobHandler.GetJobStatus)
+		r.Delete("/jobs/{jobID}", jobHandler.CancelJob)
+
+		// Admin routes (placeholder)
+		// r.Group(func(r chi.Router) {
+		//    r.Use(customMiddleware.RequireRole("admin")) // Role checking middleware needed
+		//    r.Get("/admin-stats", handlers.GetAdminStats)
+		// })
+	})
 
 	// == Service Proxy Route (Example - potentially protected) ==
 	// proxyHandler := handlers.NewProxyHandler(logger, cfg) // Needs Consul client etc.
