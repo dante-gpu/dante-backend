@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/dante-gpu/dante-backend/api-gateway/internal/config"
+	"github.com/dante-gpu/dante-backend/api-gateway/internal/handlers"
+	customMiddleware "github.com/dante-gpu/dante-backend/api-gateway/internal/middleware" // Alias to avoid conflict
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"go.uber.org/zap"
@@ -41,13 +43,57 @@ func main() {
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(cfg.RequestTimeout))
 
-	// I'll define a simple health check endpoint for now.
+	// I need to create instances of my handlers.
+	authHandler := handlers.NewAuthHandler(logger, cfg)
+
+	// == Public Routes ==
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		// Use Zap logger for endpoint logging
 		logger.Info("Health check endpoint hit", zap.String("path", r.URL.Path))
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintf(w, "API Gateway is healthy")
 	})
+
+	// == Authentication Routes ==
+	r.Route("/auth", func(r chi.Router) {
+		r.Post("/login", authHandler.Login)
+		r.Post("/register", authHandler.Register)
+
+		// Routes requiring authentication
+		r.Group(func(r chi.Router) {
+			// I need to apply the JWT authentication middleware here.
+			r.Use(customMiddleware.Authenticator(logger, cfg.JwtSecret))
+			r.Get("/profile", authHandler.Profile)
+		})
+	})
+
+	// == API V1 Routes (Example structure - protected) ==
+	// r.Route("/api/v1", func(r chi.Router) {
+	//     r.Use(customMiddleware.Authenticator(logger, cfg.JwtSecret))
+	//
+	//     // Job submission routes (placeholder)
+	//     // jobHandler := handlers.NewJobHandler(logger, cfg, natsClient) // Need NATS client
+	//     // r.Post("/jobs", jobHandler.SubmitJob)
+	//     // r.Get("/jobs/{jobID}", jobHandler.GetJobStatus)
+	//     // r.Delete("/jobs/{jobID}", jobHandler.CancelJob)
+	//
+	//     // Admin routes (placeholder)
+	//     // r.Group(func(r chi.Router) {
+	//     //    r.Use(customMiddleware.RequireRole("admin")) // Role checking middleware needed
+	//     //    r.Get("/admin-stats", handlers.GetAdminStats)
+	//     // })
+	// })
+
+	// == Service Proxy Route (Example - potentially protected) ==
+	// proxyHandler := handlers.NewProxyHandler(logger, cfg) // Needs Consul client etc.
+	// r.HandleFunc("/services/{serviceName}/*", proxyHandler.ServeHTTP)
+
+	// == Admin Dashboard Route (Example - protected) ==
+	// r.Group(func(r chi.Router) {
+	//     r.Use(customMiddleware.Authenticator(logger, cfg.JwtSecret))
+	//     r.Use(customMiddleware.RequireRole("admin")) // Role checking middleware needed
+	//     r.Get("/admin", handlers.AdminDashboard)
+	// })
 
 	// I need to start the HTTP server.
 	logger.Info("Starting API Gateway", zap.String("port", cfg.Port))
