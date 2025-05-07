@@ -13,7 +13,9 @@ import (
 	// Use imports relative to this service's module path
 	"github.com/dante-gpu/dante-backend/provider-registry-service/internal/config"
 	consul_client "github.com/dante-gpu/dante-backend/provider-registry-service/internal/consul"
+	"github.com/dante-gpu/dante-backend/provider-registry-service/internal/handlers"
 	"github.com/dante-gpu/dante-backend/provider-registry-service/internal/server"
+	"github.com/dante-gpu/dante-backend/provider-registry-service/internal/store"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -55,6 +57,10 @@ func main() {
 		zap.String("service_id", serviceID),
 	)
 
+	// --- Initialize Store ---
+	providerStore := store.NewInMemoryProviderStore()
+	logger.Info("In-memory provider store initialized")
+
 	// --- Setup Router and Server ---
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -72,9 +78,10 @@ func main() {
 		logger.Debug("Health check endpoint hit")
 	})
 
-	// Add other API endpoints later (e.g., /providers)
-	// providerHandler := handlers.NewProviderHandler(logger, cfg, ...)
-	// r.Mount("/providers", providerHandler.Routes())
+	// --- Mount API Handlers ---
+	providerHandler := handlers.NewProviderHandler(logger, cfg, providerStore)
+	r.Mount("/providers", providerHandler.Routes())
+	logger.Info("Provider API routes mounted under /providers")
 
 	srv := server.NewServer(cfg.Port, r, logger)
 
