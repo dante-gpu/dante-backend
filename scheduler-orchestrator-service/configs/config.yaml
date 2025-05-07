@@ -1,0 +1,33 @@
+port: ":8003"
+log_level: "info"
+request_timeout: 30s # Default request timeout for its own HTTP server (e.g. health checks)
+
+# Consul Configuration
+consul_address: "localhost:8500"
+service_name: "scheduler-orchestrator"
+service_id_prefix: "scheduler-orchestrator-" # Keep it relatively short for readability in Consul
+service_tags:
+  - "dante"
+  - "scheduler"
+health_check_path: "/health"
+health_check_interval: 10s
+health_check_timeout: 2s
+
+# NATS Configuration
+nats_address: "nats://localhost:4222"
+nats_job_submission_subject: "jobs.submitted"       # Subject to subscribe to for new jobs from API Gateway
+nats_job_queue_group: "scheduler-group"       # NATS queue group for load balancing job consumption across multiple scheduler instances
+nats_task_dispatch_subject_prefix: "tasks.dispatch" # Prefix for subjects to dispatch tasks to provider daemons (e.g., tasks.dispatch.provider_id.job_id)
+nats_job_status_update_subject_prefix: "jobs.status" # Prefix for subjects where provider daemons publish status updates (e.g., jobs.status.job_id)
+
+# Provider Registry Service Configuration
+# This could be a direct URL or a service name to discover via Consul
+provider_registry_service_name: "provider-registry" # Name of the provider registry service in Consul
+# provider_registry_url: "http://localhost:8002" # Alternative: Direct URL if not using Consul discovery for this
+
+# Scheduling Algorithm Configuration (Placeholders - to be expanded)
+scheduling_strategy: "round-robin" # e.g., round-robin, least-busy, gpu-specific
+job_default_priority: 5
+
+# Resource Query Configuration
+provider_query_timeout: 5s # Timeout for querying the provider registry service 
