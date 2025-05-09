@@ -109,7 +109,7 @@ func (h *ProviderHandler) RegisterProvider(w http.ResponseWriter, r *http.Reques
 
 // ListProviders retrieves a list of registered providers.
 func (h *ProviderHandler) ListProviders(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement filtering based on query parameters
+	// TODO: Implement filtering based on query parameters 👀👨🏻‍🍳
 	providers, err := h.Store.ListProviders()
 	if err != nil {
 		h.Logger.Error("Failed to list providers from store", zap.Error(err))

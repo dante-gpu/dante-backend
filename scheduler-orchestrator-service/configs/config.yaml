@@ -2,6 +2,9 @@ port: ":8003"
 log_level: "info"
 request_timeout: 30s # Default request timeout for its own HTTP server (e.g. health checks)
 
+# Database Configuration
+database_url: "postgresql://user:password@localhost:5432/dante_scheduler?sslmode=disable" # TODO:  🌿 UPDATE WITH ACTUAL CREDENTIALS - THIS IS A TEMPORARY CREDENTIALS - virjilakrum
+
 # Consul Configuration
 consul_address: "localhost:8500"
 service_name: "scheduler-orchestrator"

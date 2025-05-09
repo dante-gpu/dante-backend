@@ -18,6 +18,9 @@ type Config struct {
 	LogLevel       string        `yaml:"log_level"`
 	RequestTimeout time.Duration `yaml:"request_timeout"`
 
+	// Database Configuration
+	DatabaseURL string `yaml:"database_url"`
+
 	// Consul Configuration
 	ConsulAddress       string        `yaml:"consul_address"`
 	ServiceName         string        `yaml:"service_name"`
@@ -50,9 +53,12 @@ type Config struct {
 // It creates a default config file if it doesn't exist.
 func LoadConfig(path string) (*Config, error) {
 	defaultConfig := &Config{
-		Port:                ":8003",
-		LogLevel:            "info",
-		RequestTimeout:      30 * time.Second,
+		Port:           ":8003",
+		LogLevel:       "info",
+		RequestTimeout: 30 * time.Second,
+
+		DatabaseURL: "postgresql://user:password@localhost:5432/dante_scheduler?sslmode=disable", // Default DB URL
+
 		ConsulAddress:       "localhost:8500",
 		ServiceName:         "scheduler-orchestrator",
 		ServiceIDPrefix:     "scheduler-orchestrator-",
@@ -116,6 +122,9 @@ func applyDefaultsIfNotSet(cfg *Config, defaults *Config) {
 	}
 	if cfg.RequestTimeout == 0 {
 		cfg.RequestTimeout = defaults.RequestTimeout
+	}
+	if cfg.DatabaseURL == "" { // Apply default for DatabaseURL if missing
+		cfg.DatabaseURL = defaults.DatabaseURL
 	}
 	if cfg.ConsulAddress == "" {
 		cfg.ConsulAddress = defaults.ConsulAddress

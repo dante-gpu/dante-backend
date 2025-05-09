@@ -72,7 +72,7 @@ func main() {
 
 	// Add Health Check endpoint (required by Consul registration)
 	r.Get(cfg.HealthCheckPath, func(w http.ResponseWriter, r *http.Request) {
-		// TODO: Add more detailed health checks (e.g., DB connectivity)
+		// TODO: Add more detailed health checks (maybe DB connectivity -virjilakrum)
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintf(w, "Provider Registry Service is healthy")
 		logger.Debug("Health check endpoint hit")
