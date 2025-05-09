@@ -10,9 +10,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/dante-gpu/dante-backend/scheduler-orchestrator-service/internal/clients"
 	"github.com/dante-gpu/dante-backend/scheduler-orchestrator-service/internal/config"
 	consul_client "github.com/dante-gpu/dante-backend/scheduler-orchestrator-service/internal/consul"
 	nats_client "github.com/dante-gpu/dante-backend/scheduler-orchestrator-service/internal/nats"
+	"github.com/dante-gpu/dante-backend/scheduler-orchestrator-service/internal/scheduler"
 	"github.com/dante-gpu/dante-backend/scheduler-orchestrator-service/internal/server"
 
 	"github.com/go-chi/chi/v5"
@@ -61,14 +63,37 @@ func main() {
 	// --- NATS Client ---
 	nc, err := nats_client.Connect(cfg.NatsAddress, logger)
 	if err != nil {
-		// Log error but continue, health check should reflect NATS status
 		logger.Error("Failed to establish initial NATS connection. Service may be degraded.", zap.Error(err))
 	}
 	if nc != nil {
-		defer nc.Close() // Ensure NATS connection is closed on exit
+		// Deferring nc.Close() will be handled after jobConsumer.Stop() and nc.Drain() in the shutdown sequence
 		logger.Info("Successfully connected to NATS", zap.String("address", cfg.NatsAddress))
 	} else {
 		logger.Warn("Running without NATS connection. Job processing will be unavailable.")
+	}
+
+	// --- Provider Registry Client ---
+	// This client is needed by the JobConsumer to query for available providers.
+	prClient := clients.NewClient(cfg, consulClient, logger)
+	logger.Info("Provider Registry Service client initialized")
+
+	// --- Job Consumer ---
+	var jobConsumer *scheduler.JobConsumer
+	if nc != nil { // Only start consumer if NATS connection is available
+		jc, consumerErr := scheduler.NewJobConsumer(nc, cfg, prClient, logger)
+		if consumerErr != nil {
+			logger.Error("Failed to create JobConsumer. Job processing will be unavailable.", zap.Error(consumerErr))
+		} else {
+			jobConsumer = jc
+			if err := jobConsumer.StartConsuming(); err != nil {
+				logger.Error("Failed to start JobConsumer. Job processing will be unavailable.", zap.Error(err))
+				jobConsumer = nil // Ensure it's nil if starting failed
+			} else {
+				logger.Info("JobConsumer started and listening for jobs on NATS.")
+			}
+		}
+	} else {
+		logger.Warn("JobConsumer not started due to NATS connection failure.")
 	}
 
 	// --- Setup Router and HTTP Server ---
@@ -93,15 +118,20 @@ func main() {
 			healthMsg += " NATS: OK."
 		}
 
+		// Check if JobConsumer is running (basic check)
+		if jobConsumer == nil {
+			healthStatus = http.StatusServiceUnavailable
+			healthMsg += " JobConsumer: Not Running."
+			logger.Warn("Health check: JobConsumer is not running")
+		} else {
+			healthMsg += " JobConsumer: Running."
+		}
+
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(healthStatus)
 		fmt.Fprintln(w, healthMsg)
 		logger.Debug("Health check endpoint hit", zap.Int("status", healthStatus), zap.String("message", healthMsg))
 	})
-
-	// TODO: Add other API endpoints for scheduler (e.g., status, job queries) later
-	// Example: schedulerHandler := handlers.NewSchedulerHandler(logger, cfg, nc, providerRegistryClient)
-	// r.Mount("/api/v1/scheduler", schedulerHandler.Routes())
 
 	srv := server.NewServer(cfg, r, logger)
 
@@ -115,6 +145,13 @@ func main() {
 
 	logger.Info("Shutdown signal received, starting graceful shutdown...")
 
+	// Stop JobConsumer first
+	if jobConsumer != nil {
+		logger.Info("Stopping JobConsumer...")
+		jobConsumer.Stop()
+		logger.Info("JobConsumer stopped.")
+	}
+
 	// Deregister from Consul
 	if err := consul_client.DeregisterService(consulClient, serviceID, logger); err != nil {
 		logger.Error("Error deregistering service from Consul", zap.Error(err))
@@ -123,10 +160,9 @@ func main() {
 	}
 
 	// Shutdown HTTP server
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second) // Increased timeout for graceful NATS and HTTP shutdown
-	defer cancel()
-
-	srv.Stop(ctx) // Call Stop on our custom Server type
+	ctxHttp, cancelHttp := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancelHttp()
+	srv.Stop(ctxHttp)
 
 	// Close NATS connection gracefully if it was established
 	if nc != nil {
@@ -134,6 +170,7 @@ func main() {
 		if err := nc.Drain(); err != nil {
 			logger.Error("Error draining NATS connection", zap.Error(err))
 		}
+		nc.Close() // Close the connection after draining
 		logger.Info("NATS connection drained and closed")
 	}
 
