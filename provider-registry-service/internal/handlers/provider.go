@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"time"
@@ -22,6 +23,8 @@ type ProviderStore interface {
 	DeleteProvider(id uuid.UUID) error
 	UpdateProviderStatus(id uuid.UUID, status models.ProviderStatus) error
 	UpdateProviderHeartbeat(id uuid.UUID) error
+	Initialize(ctx context.Context) error
+	Close() error
 }
 
 // ProviderHandler holds dependencies for provider API handlers.
