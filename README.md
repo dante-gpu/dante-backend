@@ -38,9 +38,9 @@ The backend is designed as a collection of independent services communicating vi
     *   **Status:** **Implemented** (Job consumption, provider matching, task dispatch, and database persistence implemented)
 
 6.  **Storage Service (`storage-service/`)**:
-    *   **Language:** TBD (Likely Go or Python)
-    *   **Description:** Provides an abstraction layer for storing user data, AI models, datasets, and job results. This service will likely interface with an underlying object storage solution (e.g., MinIO, AWS S3).
-    *   **Status:** **Planned**
+    *   **Language:** Go
+    *   **Description:** Provides an abstraction layer for storing user data, AI models, datasets, and job results. This service interfaces with an underlying object storage solution, with MinIO as the initial backend. It supports operations like upload, download, delete, list objects, and presigned URL generation.
+    *   **Status:** **Implemented** (Core functionality with MinIO backend, Consul integration, and robust configuration management)
 
 7.  **Monitoring & Logging Service (`monitoring-logging-service/`)**:
     *   **Language:** N/A (Configuration-based)
@@ -100,6 +100,7 @@ Refer to the `README.md` file within each service directory for detailed setup a
 - **Scheduler/Orchestrator service** with job consumption, provider matching, and task dispatch
 - **Service discovery and registration** via Consul
 - **Message passing infrastructure** using NATS and JetStream
+- **Storage service** with MinIO backend, supporting uploads, downloads, presigned URLs, and bucket management.
 
 ## What Remains To Be Done
 
@@ -107,7 +108,6 @@ Refer to the `README.md` file within each service directory for detailed setup a
 - **End-to-end job execution flow** testing and optimization
 - **Metrics collection** for job performance and provider status
 - **User interface** for monitoring jobs and managing providers
-- **Storage service** implementation for input/output data
 - **Billing system** based on resource usage
 - **Comprehensive test coverage** and integration tests
 - **Deployment automation** with Docker Compose or Kubernetes
