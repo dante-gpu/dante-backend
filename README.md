@@ -1,6 +1,7 @@
 # Dante GPU Platform - Backend Services
 
-![dante-bg](https://github.com/user-attachments/assets/b796cace-0a6c-4ed8-8d21-c686da5ff85d)
+![backend-bg](https://github.com/user-attachments/assets/e0c6b886-4b59-4cfd-8121-4febf984f9e6)
+
 
 
 Welcome to the central backend repository for the **Dante GPU Platform**. This project implements a microservices architecture to manage distributed GPU resources for AI training and other compute-intensive tasks.
