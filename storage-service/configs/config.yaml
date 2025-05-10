@@ -1,0 +1,36 @@
+instance_id: "" # Will be auto-generated if empty
+log_level: "info"
+request_timeout: 30s
+
+server:
+  host: "" # Listen on all interfaces
+  port: 8082
+
+consul:
+  enabled: true
+  address: "localhost:8500"
+  registration:
+    service_name: "storage-service"
+    service_id_prefix: "storage-svc-"
+    service_tags:
+      - "dante"
+      - "storage"
+    health_check_path: "/health"
+    health_check_interval: 10s
+    health_check_timeout: 5s
+
+minio:
+  endpoint: "localhost:9000"
+  accessKeyID: "YOUR_MINIO_ACCESS_KEY" # Replace with actual key or use env vars
+  secretAccessKey: "YOUR_MINIO_SECRET_KEY" # Replace with actual key or use env vars
+  useSSL: false
+  region: "us-east-1"
+  defaultBucket: "dante-storage"
+  autoCreateDefaultBucket: true
+
+# Example for S3 (if storage_backend was "s3")
+# s3:
+#   region: "us-west-2"
+#   access_key_id: "YOUR_AWS_ACCESS_KEY_ID"
+#   secret_access_key: "YOUR_AWS_SECRET_ACCESS_KEY"
+#   default_bucket: "dante-platform-data" 
