@@ -1,6 +1,7 @@
 # Dante GPU Platform - Backend Services
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+![dante-bg](https://github.com/user-attachments/assets/b796cace-0a6c-4ed8-8d21-c686da5ff85d)
+
 
 Welcome to the central backend repository for the **Dante GPU Platform**. This project implements a microservices architecture to manage distributed GPU resources for AI training and other compute-intensive tasks.
 
