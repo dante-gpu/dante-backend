@@ -3,10 +3,12 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/dante-gpu/dante-backend/provider-registry-service/internal/config"
+	"github.com/dante-gpu/dante-backend/provider-registry-service/internal/logging"
 	"github.com/dante-gpu/dante-backend/provider-registry-service/internal/models"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -18,7 +20,7 @@ import (
 type ProviderStore interface {
 	AddProvider(ctx context.Context, provider *models.Provider) error
 	GetProvider(ctx context.Context, id uuid.UUID) (*models.Provider, error)
-	ListProviders(ctx context.Context) ([]*models.Provider, error)
+	ListProviders(ctx context.Context, filters map[string]interface{}) ([]*models.Provider, error)
 	UpdateProvider(ctx context.Context, id uuid.UUID, updatedProvider *models.Provider) error
 	DeleteProvider(ctx context.Context, id uuid.UUID) error
 	UpdateProviderStatus(ctx context.Context, id uuid.UUID, status models.ProviderStatus) error
@@ -30,13 +32,13 @@ type ProviderStore interface {
 // ProviderHandler holds dependencies for provider API handlers.
 // It uses the ProviderStore interface.
 type ProviderHandler struct {
-	Logger *zap.Logger
+	Logger *logging.ContextLogger
 	Config *config.Config
 	Store  ProviderStore
 }
 
 // NewProviderHandler creates a new ProviderHandler with the given dependencies.
-func NewProviderHandler(logger *zap.Logger, cfg *config.Config, store ProviderStore) *ProviderHandler {
+func NewProviderHandler(logger *logging.ContextLogger, cfg *config.Config, store ProviderStore) *ProviderHandler {
 	return &ProviderHandler{
 		Logger: logger,
 		Config: cfg,
@@ -86,9 +88,12 @@ type HeartbeatRequest struct {
 
 // RegisterProvider handles new provider registration.
 func (h *ProviderHandler) RegisterProvider(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	logger := h.Logger.FromContext(ctx)
+
 	var req RegisterProviderRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.Logger.Error("Failed to decode provider registration request", zap.Error(err))
+		logger.Error("Failed to decode provider registration request", zap.Error(err))
 		RespondWithError(w, http.StatusBadRequest, "Invalid request payload")
 		return
 	}
@@ -101,26 +106,61 @@ func (h *ProviderHandler) RegisterProvider(w http.ResponseWriter, r *http.Reques
 
 	provider := models.NewProvider(req.OwnerID, req.Name, req.Hostname, req.IPAddress, req.Location, req.GPUs, req.Metadata)
 
-	if err := h.Store.AddProvider(r.Context(), provider); err != nil {
+	if err := h.Store.AddProvider(ctx, provider); err != nil {
 		if err == models.ErrProviderAlreadyExists {
 			RespondWithError(w, http.StatusConflict, err.Error())
 		} else {
-			h.Logger.Error("Failed to add provider to store", zap.Error(err))
+			logger.Error("Failed to add provider to store", zap.Error(err))
 			RespondWithError(w, http.StatusInternalServerError, "Failed to register provider")
 		}
 		return
 	}
 
-	h.Logger.Info("Provider registered successfully", zap.String("provider_id", provider.ID.String()), zap.String("name", provider.Name))
+	logger.Info("Provider registered successfully", zap.String("provider_id", provider.ID.String()), zap.String("name", provider.Name))
 	RespondWithJSON(w, http.StatusCreated, provider)
 }
 
 // ListProviders retrieves a list of registered providers.
 func (h *ProviderHandler) ListProviders(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement filtering based on query parameters 👀👨🏻‍🍳
-	providers, err := h.Store.ListProviders(r.Context())
+	ctx := r.Context()
+	logger := h.Logger.FromContext(ctx)
+
+	// Parse query parameters for filtering
+	queryParams := r.URL.Query()
+	filters := make(map[string]interface{})
+
+	// Add status filter if provided
+	if status := queryParams.Get("status"); status != "" {
+		filters["status"] = status
+	}
+
+	// Add GPU model filter if provided
+	if gpuModel := queryParams.Get("gpu_model"); gpuModel != "" {
+		filters["gpu_model"] = gpuModel
+	}
+
+	// Add min VRAM filter if provided
+	if minVRAM := queryParams.Get("min_vram"); minVRAM != "" {
+		// Parse minVRAM to uint64
+		var vramValue uint64
+		if _, err := fmt.Sscanf(minVRAM, "%d", &vramValue); err == nil && vramValue > 0 {
+			filters["min_vram"] = vramValue
+		}
+	}
+
+	// Add architecture filter if provided
+	if arch := queryParams.Get("architecture"); arch != "" {
+		filters["architecture"] = arch
+	}
+
+	// Add healthy_only filter if provided
+	if healthy := queryParams.Get("healthy_only"); healthy == "true" {
+		filters["healthy_only"] = true
+	}
+
+	providers, err := h.Store.ListProviders(ctx, filters)
 	if err != nil {
-		h.Logger.Error("Failed to list providers from store", zap.Error(err))
+		logger.Error("Failed to list providers from store", zap.Error(err))
 		RespondWithError(w, http.StatusInternalServerError, "Failed to retrieve providers")
 		return
 	}
@@ -129,6 +169,9 @@ func (h *ProviderHandler) ListProviders(w http.ResponseWriter, r *http.Request) 
 
 // GetProvider retrieves a specific provider by its ID.
 func (h *ProviderHandler) GetProvider(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	logger := h.Logger.FromContext(ctx)
+
 	providerIDStr := chi.URLParam(r, "providerID")
 	providerID, err := uuid.Parse(providerIDStr)
 	if err != nil {
@@ -136,12 +179,12 @@ func (h *ProviderHandler) GetProvider(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	provider, err := h.Store.GetProvider(r.Context(), providerID)
+	provider, err := h.Store.GetProvider(ctx, providerID)
 	if err != nil {
 		if err == models.ErrProviderNotFound {
 			RespondWithError(w, http.StatusNotFound, err.Error())
 		} else {
-			h.Logger.Error("Failed to get provider from store", zap.String("provider_id", providerIDStr), zap.Error(err))
+			logger.Error("Failed to get provider from store", zap.String("provider_id", providerIDStr), zap.Error(err))
 			RespondWithError(w, http.StatusInternalServerError, "Failed to retrieve provider")
 		}
 		return
@@ -151,6 +194,9 @@ func (h *ProviderHandler) GetProvider(w http.ResponseWriter, r *http.Request) {
 
 // UpdateProvider handles full updates to a provider's details.
 func (h *ProviderHandler) UpdateProvider(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	logger := h.Logger.FromContext(ctx)
+
 	providerIDStr := chi.URLParam(r, "providerID")
 	providerID, err := uuid.Parse(providerIDStr)
 	if err != nil {
@@ -160,7 +206,7 @@ func (h *ProviderHandler) UpdateProvider(w http.ResponseWriter, r *http.Request)
 
 	var req models.Provider // Expecting full provider object for PUT
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.Logger.Error("Failed to decode update provider request", zap.Error(err))
+		logger.Error("Failed to decode update provider request", zap.Error(err))
 		RespondWithError(w, http.StatusBadRequest, "Invalid request payload")
 		return
 	}
@@ -171,11 +217,11 @@ func (h *ProviderHandler) UpdateProvider(w http.ResponseWriter, r *http.Request)
 	// For in-memory, we might need to explicitly set LastSeenAt if not using the model methods.
 	req.LastSeenAt = time.Now().UTC()
 
-	if err := h.Store.UpdateProvider(r.Context(), providerID, &req); err != nil {
+	if err := h.Store.UpdateProvider(ctx, providerID, &req); err != nil {
 		if err == models.ErrProviderNotFound {
 			RespondWithError(w, http.StatusNotFound, err.Error())
 		} else {
-			h.Logger.Error("Failed to update provider in store", zap.String("provider_id", providerIDStr), zap.Error(err))
+			logger.Error("Failed to update provider in store", zap.String("provider_id", providerIDStr), zap.Error(err))
 			RespondWithError(w, http.StatusInternalServerError, "Failed to update provider")
 		}
 		return
@@ -185,6 +231,9 @@ func (h *ProviderHandler) UpdateProvider(w http.ResponseWriter, r *http.Request)
 
 // UpdateProviderStatus handles partial updates to a provider's status.
 func (h *ProviderHandler) UpdateProviderStatus(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	logger := h.Logger.FromContext(ctx)
+
 	providerIDStr := chi.URLParam(r, "providerID")
 	providerID, err := uuid.Parse(providerIDStr)
 	if err != nil {
@@ -194,18 +243,18 @@ func (h *ProviderHandler) UpdateProviderStatus(w http.ResponseWriter, r *http.Re
 
 	var req UpdateProviderStatusRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.Logger.Error("Failed to decode update provider status request", zap.Error(err))
+		logger.Error("Failed to decode update provider status request", zap.Error(err))
 		RespondWithError(w, http.StatusBadRequest, "Invalid request payload")
 		return
 	}
 
 	// Validate status value (optional, if ProviderStatus has more complex rules)
 
-	if err := h.Store.UpdateProviderStatus(r.Context(), providerID, req.Status); err != nil {
+	if err := h.Store.UpdateProviderStatus(ctx, providerID, req.Status); err != nil {
 		if err == models.ErrProviderNotFound {
 			RespondWithError(w, http.StatusNotFound, err.Error())
 		} else {
-			h.Logger.Error("Failed to update provider status in store", zap.String("provider_id", providerIDStr), zap.Error(err))
+			logger.Error("Failed to update provider status in store", zap.String("provider_id", providerIDStr), zap.Error(err))
 			RespondWithError(w, http.StatusInternalServerError, "Failed to update provider status")
 		}
 		return
@@ -215,6 +264,9 @@ func (h *ProviderHandler) UpdateProviderStatus(w http.ResponseWriter, r *http.Re
 
 // ProviderHeartbeat handles heartbeat signals from providers.
 func (h *ProviderHandler) ProviderHeartbeat(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	logger := h.Logger.FromContext(ctx)
+
 	providerIDStr := chi.URLParam(r, "providerID")
 	providerID, err := uuid.Parse(providerIDStr)
 	if err != nil {
@@ -228,18 +280,18 @@ func (h *ProviderHandler) ProviderHeartbeat(w http.ResponseWriter, r *http.Reque
 
 	if r.ContentLength > 0 {
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			h.Logger.Error("Failed to decode heartbeat request", zap.Error(err))
+			logger.Error("Failed to decode heartbeat request", zap.Error(err))
 			RespondWithError(w, http.StatusBadRequest, "Invalid request payload")
 			return
 		}
 		gpuMetrics = req.GPUMetrics
 	}
 
-	if err := h.Store.UpdateProviderHeartbeat(r.Context(), providerID, gpuMetrics); err != nil {
+	if err := h.Store.UpdateProviderHeartbeat(ctx, providerID, gpuMetrics); err != nil {
 		if err == models.ErrProviderNotFound {
 			RespondWithError(w, http.StatusNotFound, err.Error())
 		} else {
-			h.Logger.Error("Failed to process provider heartbeat", zap.String("provider_id", providerIDStr), zap.Error(err))
+			logger.Error("Failed to process provider heartbeat", zap.String("provider_id", providerIDStr), zap.Error(err))
 			RespondWithError(w, http.StatusInternalServerError, "Failed to process heartbeat")
 		}
 		return
@@ -250,6 +302,9 @@ func (h *ProviderHandler) ProviderHeartbeat(w http.ResponseWriter, r *http.Reque
 
 // DeregisterProvider handles provider deregistration.
 func (h *ProviderHandler) DeregisterProvider(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	logger := h.Logger.FromContext(ctx)
+
 	providerIDStr := chi.URLParam(r, "providerID")
 	providerID, err := uuid.Parse(providerIDStr)
 	if err != nil {
@@ -257,17 +312,17 @@ func (h *ProviderHandler) DeregisterProvider(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	if err := h.Store.DeleteProvider(r.Context(), providerID); err != nil {
+	if err := h.Store.DeleteProvider(ctx, providerID); err != nil {
 		if err == models.ErrProviderNotFound {
 			RespondWithError(w, http.StatusNotFound, err.Error())
 		} else {
-			h.Logger.Error("Failed to delete provider from store", zap.String("provider_id", providerIDStr), zap.Error(err))
+			logger.Error("Failed to delete provider from store", zap.String("provider_id", providerIDStr), zap.Error(err))
 			RespondWithError(w, http.StatusInternalServerError, "Failed to deregister provider")
 		}
 		return
 	}
 
-	h.Logger.Info("Provider deregistered successfully", zap.String("provider_id", providerIDStr))
+	logger.Info("Provider deregistered successfully", zap.String("provider_id", providerIDStr))
 	RespondWithJSON(w, http.StatusOK, map[string]string{"message": "Provider deregistered successfully"})
 }
 

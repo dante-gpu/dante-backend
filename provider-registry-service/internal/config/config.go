@@ -16,7 +16,8 @@ type Config struct {
 	Port                string        `yaml:"port"`
 	LogLevel            string        `yaml:"log_level"`
 	ConsulAddress       string        `yaml:"consul_address"`
-	DatabaseURL         string        `yaml:"database_url"`      // Planned for DB connection
+	DatabaseURL         string        `yaml:"database_url"`      // Used if direct URL is provided
+	SecretsFilePath     string        `yaml:"secrets_file_path"` // Path to secrets JSON file
 	ServiceName         string        `yaml:"service_name"`      // Name to register with Consul
 	ServiceIDPrefix     string        `yaml:"service_id_prefix"` // Prefix for unique Consul service ID
 	ServiceTags         []string      `yaml:"service_tags"`      // Tags for Consul registration
@@ -35,6 +36,7 @@ func LoadConfig(path string) (*Config, error) {
 		LogLevel:            "info",
 		ConsulAddress:       "localhost:8500",
 		DatabaseURL:         "postgresql://user:pass@localhost:5432/dante_registry?sslmode=disable",
+		SecretsFilePath:     "", // Default to empty, which means use environment variables only
 		ServiceName:         "provider-registry",
 		ServiceIDPrefix:     "provider-reg-", // Keep it short
 		ServiceTags:         []string{"dante", "registry"},
@@ -121,4 +123,23 @@ func GenerateServiceID(prefix string) string {
 	// I should append a unique part to the prefix.
 	// Using a UUID is a good way to ensure uniqueness.
 	return prefix + uuid.New().String()
+}
+
+// GetDatabaseURL returns the database connection URL, either from the direct URL in the config
+// or by constructing it from individual credentials loaded from the secret loader
+func (c *Config) GetDatabaseURL() (string, error) {
+	// If DatabaseURL is directly provided and not the default, use it
+	if c.DatabaseURL != "" && c.DatabaseURL != "postgresql://user:pass@localhost:5432/dante_registry?sslmode=disable" {
+		return c.DatabaseURL, nil
+	}
+
+	// Try to load from secrets
+	secretLoader := DefaultSecretLoader(c.SecretsFilePath)
+	host, port, dbname, user, password, sslmode, err := GetDatabaseCredentials(secretLoader)
+	if err != nil {
+		return "", fmt.Errorf("failed to load database credentials: %w", err)
+	}
+
+	// Build and return the database URL
+	return BuildDatabaseURL(host, port, dbname, user, password, sslmode), nil
 }

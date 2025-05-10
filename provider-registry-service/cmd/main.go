@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"regexp"
 	"syscall"
 	"time"
 
@@ -17,6 +18,8 @@ import (
 	"github.com/dante-gpu/dante-backend/provider-registry-service/internal/server"
 	"github.com/dante-gpu/dante-backend/provider-registry-service/internal/store"
 
+	"github.com/dante-gpu/dante-backend/provider-registry-service/internal/logging"
+	customMiddleware "github.com/dante-gpu/dante-backend/provider-registry-service/internal/middleware"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -39,11 +42,19 @@ func main() {
 	defer logger.Sync() // Flush logs before exiting
 
 	// --- Database Connection Setup ---
-	logger.Info("Connecting to PostgreSQL database...", zap.String("url", cfg.DatabaseURL))
+	dbURL, err := cfg.GetDatabaseURL()
+	if err != nil {
+		logger.Fatal("Failed to get database URL", zap.Error(err))
+	}
+
+	// Log redacted version of the URL to avoid exposing credentials
+	redactedURL := redactDatabaseURL(dbURL)
+	logger.Info("Connecting to PostgreSQL database...", zap.String("url", redactedURL))
+
 	dbCtx, dbCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer dbCancel()
 
-	dbPool, err := pgxpool.New(dbCtx, cfg.DatabaseURL)
+	dbPool, err := pgxpool.New(dbCtx, dbURL)
 	if err != nil {
 		logger.Fatal("Failed to connect to PostgreSQL database", zap.Error(err))
 	}
@@ -89,10 +100,15 @@ func main() {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
-	// Add Zap logging middleware (using a similar one as api-gateway)
+	// Add our correlation ID middleware
+	r.Use(customMiddleware.CorrelationID)
+	// Use the structured logger middleware
 	r.Use(NewStructuredLogger(logger))
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(cfg.RequestTimeout))
+
+	// Create a context logger for use in handlers
+	contextLogger := logging.NewContextLogger(logger)
 
 	// Add Health Check endpoint (required by Consul registration)
 	r.Get(cfg.HealthCheckPath, func(w http.ResponseWriter, r *http.Request) {
@@ -116,7 +132,7 @@ func main() {
 	})
 
 	// --- Mount API Handlers ---
-	providerHandler := handlers.NewProviderHandler(logger, cfg, providerStore)
+	providerHandler := handlers.NewProviderHandler(contextLogger, cfg, providerStore)
 	r.Mount("/providers", providerHandler.Routes())
 	logger.Info("Provider API routes mounted under /providers")
 
@@ -209,11 +225,18 @@ func NewStructuredLogger(logger *zap.Logger) func(next http.Handler) http.Handle
 
 			defer func() {
 				duration := time.Since(start)
+
+				// Get context values for logging
+				reqID := middleware.GetReqID(r.Context())
+				corrID := logging.GetCorrelationID(r.Context())
+
+				// Log with context values
 				logger.Info("Request completed",
 					zap.String("method", r.Method),
 					zap.String("path", r.URL.Path),
 					zap.String("remote_ip", r.RemoteAddr),
-					zap.String("request_id", middleware.GetReqID(r.Context())),
+					zap.String("request_id", reqID),
+					zap.String("correlation_id", corrID),
 					zap.Int("status", ww.Status()),
 					zap.Int("bytes", ww.BytesWritten()),
 					zap.Duration("duration", duration),
@@ -224,4 +247,11 @@ func NewStructuredLogger(logger *zap.Logger) func(next http.Handler) http.Handle
 		}
 		return http.HandlerFunc(fn)
 	}
+}
+
+// redactDatabaseURL hides sensitive information from database URLs for logging
+func redactDatabaseURL(url string) string {
+	// Use a regex to replace the password part of the URL
+	re := regexp.MustCompile(`([^:]+:)([^@]+)(@.+)`)
+	return re.ReplaceAllString(url, "$1[REDACTED]$3")
 }
