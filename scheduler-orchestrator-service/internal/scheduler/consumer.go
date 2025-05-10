@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/dante-gpu/dante-backend/scheduler-orchestrator-service/internal/clients"
@@ -24,7 +23,6 @@ type JobConsumer struct {
 	cfg          *config.Config
 	prClient     *clients.Client                              // Client for provider-registry-service
 	jobStore     store.JobStore                               // Added JobStore dependency
-	mu           sync.Mutex                                   // For managing internal state if needed (e.g., active jobs map)
 	activeJobs   map[string]*models.InternalJobRepresentation // Map to track jobs being processed
 	subscription *nats.Subscription
 	shutdownChan chan struct{} // Channel to signal shutdown
@@ -198,7 +196,7 @@ func (jc *JobConsumer) handleMessage(msg *nats.Msg) {
 		jc.logger.Info("New job saved to store", zap.String("job_id", internalJob.JobDetails.ID))
 	}
 
-	scheduled, scheduleErr := jc.scheduleJob(ctx, internalJob)
+	scheduled, scheduleErr := jc.scheduleJob(internalJob)
 
 	// Update job state in DB based on scheduling outcome
 	currentAttempts := internalJob.Attempts
@@ -245,7 +243,7 @@ func (jc *JobConsumer) handleMessage(msg *nats.Msg) {
 
 // scheduleJob attempts to find a suitable provider and dispatch the job.
 // Returns true if scheduled, false if no suitable provider is found currently.
-func (jc *JobConsumer) scheduleJob(ctx context.Context, internalJob *models.InternalJobRepresentation) (bool, error) {
+func (jc *JobConsumer) scheduleJob(internalJob *models.InternalJobRepresentation) (bool, error) {
 	job := internalJob.JobDetails
 	originalState := internalJob.State // Keep original state in case we need to revert or for logging
 	internalJob.State = models.JobStateSearching
