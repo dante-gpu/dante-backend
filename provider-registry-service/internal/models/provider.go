@@ -19,10 +19,24 @@ const (
 
 // GPUDetail holds specific information about a GPU.
 type GPUDetail struct {
-	ModelName     string `json:"model_name" yaml:"model_name"`
-	VRAM          uint64 `json:"vram_mb" yaml:"vram_mb"` // VRAM in Megabytes
-	DriverVersion string `json:"driver_version" yaml:"driver_version"`
-	// We could add more details like CUDA cores, clock speeds, etc.
+	ModelName         string `json:"model_name" yaml:"model_name"`
+	VRAM              uint64 `json:"vram_mb" yaml:"vram_mb"` // VRAM in Megabytes
+	DriverVersion     string `json:"driver_version" yaml:"driver_version"`
+	Architecture      string `json:"architecture,omitempty" yaml:"architecture,omitempty"`
+	ComputeCapability string `json:"compute_capability,omitempty" yaml:"compute_capability,omitempty"`
+	CudaCores         uint32 `json:"cuda_cores,omitempty" yaml:"cuda_cores,omitempty"`
+	TensorCores       uint32 `json:"tensor_cores,omitempty" yaml:"tensor_cores,omitempty"`
+	MemoryBandwidth   uint64 `json:"memory_bandwidth_gb_s,omitempty" yaml:"memory_bandwidth_gb_s,omitempty"` // GB/s
+	PowerConsumption  uint32 `json:"power_consumption_w,omitempty" yaml:"power_consumption_w,omitempty"`     // Watts
+
+	// Current utilization metrics (updated with heartbeats)
+	UtilizationGPU uint8  `json:"utilization_gpu_percent,omitempty" yaml:"utilization_gpu_percent,omitempty"`       // 0-100%
+	UtilizationMem uint8  `json:"utilization_memory_percent,omitempty" yaml:"utilization_memory_percent,omitempty"` // 0-100%
+	Temperature    uint8  `json:"temperature_c,omitempty" yaml:"temperature_c,omitempty"`                           // Celsius
+	PowerDraw      uint32 `json:"power_draw_w,omitempty" yaml:"power_draw_w,omitempty"`                             // Current power usage in Watts
+
+	// Functional status
+	IsHealthy bool `json:"is_healthy" yaml:"is_healthy"` // Whether the GPU is in a good operational state
 }
 
 // Provider represents a registered GPU provider in the system.
@@ -52,7 +66,7 @@ func NewProvider(ownerID, name, hostname, ipAddress, location string, gpus []GPU
 		Name:         name,
 		Hostname:     hostname,
 		IPAddress:    ipAddress,
-		Status:       StatusIdle, // Default to idle on registration
+		Status:       StatusIdle,
 		GPUs:         gpus,
 		Location:     location,
 		RegisteredAt: now,

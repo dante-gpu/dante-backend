@@ -21,7 +21,7 @@ type ProviderStore interface {
 
 	// ListProviders retrieves all providers, with optional filtering
 	// TODO: Add filtering parameters
-	ListProviders(ctx context.Context) ([]*models.Provider, error)
+	ListProviders(ctx context.Context, filters map[string]interface{}) ([]*models.Provider, error)
 
 	// UpdateProvider updates an existing provider
 	UpdateProvider(ctx context.Context, id uuid.UUID, updatedProvider *models.Provider) error
@@ -33,7 +33,8 @@ type ProviderStore interface {
 	UpdateProviderStatus(ctx context.Context, id uuid.UUID, status models.ProviderStatus) error
 
 	// UpdateProviderHeartbeat updates the last_seen_at timestamp for a provider
-	UpdateProviderHeartbeat(ctx context.Context, id uuid.UUID) error
+	// and updates GPU utilization metrics if provided
+	UpdateProviderHeartbeat(ctx context.Context, id uuid.UUID, gpuMetrics []models.GPUDetail) error
 
 	// Close cleans up any resources used by the store
 	Close() error

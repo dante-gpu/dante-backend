@@ -22,7 +22,7 @@ type ProviderStore interface {
 	UpdateProvider(ctx context.Context, id uuid.UUID, updatedProvider *models.Provider) error
 	DeleteProvider(ctx context.Context, id uuid.UUID) error
 	UpdateProviderStatus(ctx context.Context, id uuid.UUID, status models.ProviderStatus) error
-	UpdateProviderHeartbeat(ctx context.Context, id uuid.UUID) error
+	UpdateProviderHeartbeat(ctx context.Context, id uuid.UUID, gpuMetrics []models.GPUDetail) error
 	Initialize(ctx context.Context) error
 	Close() error
 }
@@ -75,6 +75,11 @@ type RegisterProviderRequest struct {
 // UpdateProviderStatusRequest defines the payload for updating status.
 type UpdateProviderStatusRequest struct {
 	Status models.ProviderStatus `json:"status"`
+}
+
+// HeartbeatRequest defines the payload for a provider heartbeat.
+type HeartbeatRequest struct {
+	GPUMetrics []models.GPUDetail `json:"gpu_metrics,omitempty"`
 }
 
 // --- Handler Implementations ---
@@ -217,7 +222,20 @@ func (h *ProviderHandler) ProviderHeartbeat(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if err := h.Store.UpdateProviderHeartbeat(r.Context(), providerID); err != nil {
+	// Parse GPU metrics if they are provided in the request body
+	var req HeartbeatRequest
+	var gpuMetrics []models.GPUDetail
+
+	if r.ContentLength > 0 {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			h.Logger.Error("Failed to decode heartbeat request", zap.Error(err))
+			RespondWithError(w, http.StatusBadRequest, "Invalid request payload")
+			return
+		}
+		gpuMetrics = req.GPUMetrics
+	}
+
+	if err := h.Store.UpdateProviderHeartbeat(r.Context(), providerID, gpuMetrics); err != nil {
 		if err == models.ErrProviderNotFound {
 			RespondWithError(w, http.StatusNotFound, err.Error())
 		} else {
@@ -226,6 +244,7 @@ func (h *ProviderHandler) ProviderHeartbeat(w http.ResponseWriter, r *http.Reque
 		}
 		return
 	}
+
 	RespondWithJSON(w, http.StatusOK, map[string]string{"message": "Heartbeat received"})
 }
 
