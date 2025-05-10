@@ -19,6 +19,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -36,6 +37,23 @@ func main() {
 		log.Fatalf("Failed to initialize logger: %v", err)
 	}
 	defer logger.Sync() // Flush logs before exiting
+
+	// --- Database Connection Setup ---
+	logger.Info("Connecting to PostgreSQL database...", zap.String("url", cfg.DatabaseURL))
+	dbCtx, dbCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer dbCancel()
+
+	dbPool, err := pgxpool.New(dbCtx, cfg.DatabaseURL)
+	if err != nil {
+		logger.Fatal("Failed to connect to PostgreSQL database", zap.Error(err))
+	}
+	defer dbPool.Close()
+
+	// Test the connection
+	if err := dbPool.Ping(dbCtx); err != nil {
+		logger.Fatal("Failed to ping PostgreSQL database", zap.Error(err))
+	}
+	logger.Info("Successfully connected to PostgreSQL database")
 
 	// --- Consul Client ---
 	consulClient, err := consul_client.Connect(cfg.ConsulAddress, logger)
@@ -58,8 +76,14 @@ func main() {
 	)
 
 	// --- Initialize Store ---
-	providerStore := store.NewInMemoryProviderStore()
-	logger.Info("In-memory provider store initialized")
+	providerStore := store.NewPostgresProviderStore(dbPool, logger)
+	storeCtx, storeCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	if err := providerStore.Initialize(storeCtx); err != nil {
+		storeCancel()
+		logger.Fatal("Failed to initialize provider store", zap.Error(err))
+	}
+	storeCancel() // Cancel the context after initialization
+	logger.Info("PostgreSQL provider store initialized successfully")
 
 	// --- Setup Router and Server ---
 	r := chi.NewRouter()
@@ -72,10 +96,23 @@ func main() {
 
 	// Add Health Check endpoint (required by Consul registration)
 	r.Get(cfg.HealthCheckPath, func(w http.ResponseWriter, r *http.Request) {
-		// TODO: Add more detailed health checks (maybe DB connectivity -virjilakrum)
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, "Provider Registry Service is healthy")
-		logger.Debug("Health check endpoint hit")
+		healthStatus := http.StatusOK
+		healthMsg := "Provider Registry Service is healthy."
+
+		// Check DB connection status
+		pingCtx, pingCancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer pingCancel()
+		if err := dbPool.Ping(pingCtx); err != nil {
+			healthStatus = http.StatusServiceUnavailable
+			healthMsg = "Database connection is down."
+			logger.Warn("Health check: Database ping failed", zap.Error(err))
+		} else {
+			healthMsg += " DB: OK."
+		}
+
+		w.WriteHeader(healthStatus)
+		fmt.Fprintln(w, healthMsg)
+		logger.Debug("Health check endpoint hit", zap.Int("status", healthStatus))
 	})
 
 	// --- Mount API Handlers ---
@@ -113,6 +150,13 @@ func main() {
 
 	if err := srv.Shutdown(ctx); err != nil {
 		logger.Fatal("Server forced to shutdown uncleanly", zap.Error(err))
+	}
+
+	// Close provider store
+	if err := providerStore.Close(); err != nil {
+		logger.Error("Error closing provider store", zap.Error(err))
+	} else {
+		logger.Info("Provider store closed successfully")
 	}
 
 	logger.Info("Server gracefully stopped")

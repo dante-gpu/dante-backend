@@ -2,26 +2,27 @@ package store
 
 import (
 	"context"
-	"encoding/json" // For metadata if we decide to marshal/unmarshal manually in some cases
+	"database/sql"
+	"encoding/json"
+	"errors"
 	"fmt"
-	"strings" // For errors.Is check with older pgx versions or specific error strings
-	"time"    // For timestamps
+	"strings"
+	"time"
 
 	"github.com/dante-gpu/dante-backend/provider-registry-service/internal/models"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5" // Import pgx for pgx.ErrNoRows
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/zap"
 )
 
-// PostgresProviderStore implements the ProviderStore interface using a PostgreSQL database.
+// PostgresProviderStore is a PostgreSQL implementation of the ProviderStore interface.
 type PostgresProviderStore struct {
 	db     *pgxpool.Pool
 	logger *zap.Logger
 }
 
 // NewPostgresProviderStore creates a new PostgresProviderStore.
-// It expects a connected pgxpool.Pool.
 func NewPostgresProviderStore(db *pgxpool.Pool, logger *zap.Logger) *PostgresProviderStore {
 	return &PostgresProviderStore{
 		db:     db,
@@ -29,83 +30,81 @@ func NewPostgresProviderStore(db *pgxpool.Pool, logger *zap.Logger) *PostgresPro
 	}
 }
 
-// Initialize creates the necessary 'providers' and 'gpu_details' tables if they don't already exist.
+// Initialize sets up the PostgreSQL tables if they don't exist.
 func (pps *PostgresProviderStore) Initialize(ctx context.Context) error {
-	pps.logger.Info("Initializing PostgreSQL schema for provider registry...")
-
-	createProvidersTableSQL := `
+	// Create providers table
+	createProvidersTable := `
 	CREATE TABLE IF NOT EXISTS providers (
 		id UUID PRIMARY KEY,
-		owner_id VARCHAR(255) NOT NULL,
-		name VARCHAR(255) NOT NULL,
-		hostname VARCHAR(255),
-		ip_address VARCHAR(255),
-		status VARCHAR(50) NOT NULL,
-		location VARCHAR(255),
-		registered_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		owner_id TEXT NOT NULL,
+		name TEXT NOT NULL,
+		hostname TEXT,
+		ip_address TEXT,
+		status TEXT NOT NULL,
+		location TEXT,
+		registered_at TIMESTAMPTZ NOT NULL,
+		last_seen_at TIMESTAMPTZ NOT NULL,
 		metadata JSONB
 	);
+
+	-- Create indexes for frequently queried columns
+	CREATE INDEX IF NOT EXISTS idx_providers_status ON providers(status);
+	CREATE INDEX IF NOT EXISTS idx_providers_location ON providers(location);
+	CREATE INDEX IF NOT EXISTS idx_providers_last_seen_at ON providers(last_seen_at);
+	CREATE INDEX IF NOT EXISTS idx_providers_owner_id ON providers(owner_id);
 	`
 
-	_, err := pps.db.Exec(ctx, createProvidersTableSQL)
-	if err != nil {
-		pps.logger.Error("Failed to create 'providers' table", zap.Error(err))
-		return fmt.Errorf("initializing providers table: %w", err)
-	}
-	pps.logger.Info("'providers' table checked/created successfully")
-
-	createGpuDetailsTableSQL := `
+	// Create GPU details table
+	createGPUDetailsTable := `
 	CREATE TABLE IF NOT EXISTS gpu_details (
 		id SERIAL PRIMARY KEY,
 		provider_id UUID NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
-		model_name VARCHAR(255) NOT NULL,
+		model_name TEXT NOT NULL,
 		vram_mb BIGINT NOT NULL,
-		driver_version VARCHAR(100) NOT NULL
+		driver_version TEXT,
+		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 	);
+
+	-- Create index for the provider_id foreign key
+	CREATE INDEX IF NOT EXISTS idx_gpu_details_provider_id ON gpu_details(provider_id);
+	CREATE INDEX IF NOT EXISTS idx_gpu_details_model_name ON gpu_details(model_name);
 	`
 
-	_, err = pps.db.Exec(ctx, createGpuDetailsTableSQL)
-	if err != nil {
-		pps.logger.Error("Failed to create 'gpu_details' table", zap.Error(err))
-		return fmt.Errorf("initializing gpu_details table: %w", err)
+	// Execute the table creation queries
+	if _, err := pps.db.Exec(ctx, createProvidersTable); err != nil {
+		return fmt.Errorf("failed to create providers table: %w", err)
 	}
-	pps.logger.Info("'gpu_details' table checked/created successfully")
 
-	// Create indexes for frequently queried columns
-	createIndexesSQL := `
-	CREATE INDEX IF NOT EXISTS idx_providers_status ON providers (status);
-	CREATE INDEX IF NOT EXISTS idx_providers_location ON providers (location);
-	CREATE INDEX IF NOT EXISTS idx_providers_last_seen_at ON providers (last_seen_at DESC);
-	CREATE INDEX IF NOT EXISTS idx_gpu_details_provider_id ON gpu_details (provider_id);
-	CREATE INDEX IF NOT EXISTS idx_gpu_details_model_name ON gpu_details (model_name);
-	`
-	_, err = pps.db.Exec(ctx, createIndexesSQL)
-	if err != nil {
-		pps.logger.Error("Failed to create indexes for tables", zap.Error(err))
-		return fmt.Errorf("creating indexes: %w", err)
+	if _, err := pps.db.Exec(ctx, createGPUDetailsTable); err != nil {
+		return fmt.Errorf("failed to create gpu_details table: %w", err)
 	}
-	pps.logger.Info("Indexes checked/created successfully")
 
-	pps.logger.Info("PostgreSQL schema initialization complete.")
+	pps.logger.Info("PostgreSQL tables initialized for provider store")
 	return nil
 }
 
-// AddProvider adds a new provider and its GPU details to the database within a transaction.
-func (pps *PostgresProviderStore) AddProvider(provider *models.Provider) error {
-	ctx := context.Background()
-
+// AddProvider adds a new provider to the PostgreSQL database.
+func (pps *PostgresProviderStore) AddProvider(ctx context.Context, provider *models.Provider) error {
+	// Start a transaction
 	tx, err := pps.db.Begin(ctx)
 	if err != nil {
-		return fmt.Errorf("beginning transaction for AddProvider: %w", err)
+		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback(ctx) // Rollback if anything goes wrong
+	defer tx.Rollback(ctx) // Rollback if not committed
 
-	addProviderSQL := `
-	INSERT INTO providers (id, owner_id, name, hostname, ip_address, status, location, registered_at, last_seen_at, metadata)
-	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+	// Insert the provider
+	metadataJSON, err := json.Marshal(provider.Metadata)
+	if err != nil {
+		return fmt.Errorf("failed to marshal metadata: %w", err)
+	}
+
+	sqlProvider := `
+	INSERT INTO providers (
+		id, owner_id, name, hostname, ip_address, status, location, registered_at, last_seen_at, metadata
+	) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 	`
-	_, err = tx.Exec(ctx, addProviderSQL,
+
+	_, err = tx.Exec(ctx, sqlProvider,
 		provider.ID,
 		provider.OwnerID,
 		provider.Name,
@@ -115,205 +114,246 @@ func (pps *PostgresProviderStore) AddProvider(provider *models.Provider) error {
 		provider.Location,
 		provider.RegisteredAt,
 		provider.LastSeenAt,
-		provider.Metadata,
+		metadataJSON,
 	)
 	if err != nil {
-		pps.logger.Error("Failed to insert into 'providers' table", zap.String("provider_id", provider.ID.String()), zap.Error(err))
-		return fmt.Errorf("inserting provider %s: %w", provider.ID.String(), err)
+		return fmt.Errorf("failed to insert provider: %w", err)
 	}
 
-	addGpuDetailSQL := `
-	INSERT INTO gpu_details (provider_id, model_name, vram_mb, driver_version)
-	VALUES ($1, $2, $3, $4)
+	// Insert each GPU detail
+	sqlGPU := `
+	INSERT INTO gpu_details (
+		provider_id, model_name, vram_mb, driver_version
+	) VALUES ($1, $2, $3, $4)
 	`
+
 	for _, gpu := range provider.GPUs {
-		_, err = tx.Exec(ctx, addGpuDetailSQL, provider.ID, gpu.ModelName, gpu.VRAM, gpu.DriverVersion)
+		_, err = tx.Exec(ctx, sqlGPU,
+			provider.ID,
+			gpu.ModelName,
+			gpu.VRAM,
+			gpu.DriverVersion,
+		)
 		if err != nil {
-			pps.logger.Error("Failed to insert into 'gpu_details' table",
-				zap.String("provider_id", provider.ID.String()),
-				zap.String("gpu_model", gpu.ModelName),
-				zap.Error(err),
-			)
-			return fmt.Errorf("inserting GPU detail for provider %s: %w", provider.ID.String(), err)
+			return fmt.Errorf("failed to insert GPU detail: %w", err)
 		}
 	}
 
+	// Commit the transaction
 	if err = tx.Commit(ctx); err != nil {
-		pps.logger.Error("Failed to commit transaction for AddProvider", zap.String("provider_id", provider.ID.String()), zap.Error(err))
-		return fmt.Errorf("committing transaction for AddProvider: %w", err)
+		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	pps.logger.Info("Successfully added provider and GPU details to DB", zap.String("provider_id", provider.ID.String()))
 	return nil
 }
 
-// GetProvider retrieves a provider and its GPU details by ID.
-func (pps *PostgresProviderStore) GetProvider(id uuid.UUID) (*models.Provider, error) {
-	ctx := context.Background()
-	provider := &models.Provider{}
-
-	getProviderSQL := `
-	SELECT id, owner_id, name, hostname, ip_address, status, location, registered_at, last_seen_at, metadata
-	FROM providers
+// GetProvider retrieves a provider by its ID.
+func (pps *PostgresProviderStore) GetProvider(ctx context.Context, id uuid.UUID) (*models.Provider, error) {
+	// Query the provider
+	sqlProvider := `
+	SELECT 
+		id, owner_id, name, hostname, ip_address, status, location, 
+		registered_at, last_seen_at, metadata
+	FROM providers 
 	WHERE id = $1
 	`
-	var metadataBytes []byte
 
-	err := pps.db.QueryRow(ctx, getProviderSQL, id).Scan(
+	var provider models.Provider
+	var metadataJSON []byte
+	var hostname, ipAddress, location sql.NullString // For handling nullable fields
+
+	err := pps.db.QueryRow(ctx, sqlProvider, id).Scan(
 		&provider.ID,
 		&provider.OwnerID,
 		&provider.Name,
-		&provider.Hostname,
-		&provider.IPAddress,
+		&hostname,
+		&ipAddress,
 		&provider.Status,
-		&provider.Location,
+		&location,
 		&provider.RegisteredAt,
 		&provider.LastSeenAt,
-		&metadataBytes,
+		&metadataJSON,
 	)
 
 	if err != nil {
-		if strings.Contains(err.Error(), "no rows in result set") || err == pgx.ErrNoRows {
-			pps.logger.Debug("Provider not found in DB for GetProvider", zap.String("provider_id", id.String()))
+		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, models.ErrProviderNotFound
 		}
-		pps.logger.Error("Failed to get provider from DB", zap.String("provider_id", id.String()), zap.Error(err))
-		return nil, fmt.Errorf("getting provider %s: %w", id.String(), err)
+		return nil, fmt.Errorf("failed to query provider: %w", err)
 	}
 
-	if len(metadataBytes) > 0 && string(metadataBytes) != "null" {
-		if err := json.Unmarshal(metadataBytes, &provider.Metadata); err != nil {
-			pps.logger.Error("Failed to unmarshal metadata for provider", zap.String("provider_id", id.String()), zap.Error(err))
-			return nil, fmt.Errorf("unmarshalling metadata for provider %s: %w", id.String(), err)
+	// Handle null fields
+	if hostname.Valid {
+		provider.Hostname = hostname.String
+	}
+	if ipAddress.Valid {
+		provider.IPAddress = ipAddress.String
+	}
+	if location.Valid {
+		provider.Location = location.String
+	}
+
+	// Unmarshal metadata if not null
+	if len(metadataJSON) > 0 {
+		var metadata map[string]interface{}
+		if err := json.Unmarshal(metadataJSON, &metadata); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal metadata: %w", err)
 		}
-	} else {
-		provider.Metadata = nil // Ensure it's nil if DB returned null or empty JSON
+		provider.Metadata = metadata
 	}
 
-	getGpusSQL := `
+	// Get GPU details for this provider
+	sqlGPU := `
 	SELECT model_name, vram_mb, driver_version
-	FROM gpu_details
+	FROM gpu_details 
 	WHERE provider_id = $1
 	`
-	rows, err := pps.db.Query(ctx, getGpusSQL, id)
+
+	rows, err := pps.db.Query(ctx, sqlGPU, id)
 	if err != nil {
-		pps.logger.Error("Failed to get GPU details for provider from DB", zap.String("provider_id", id.String()), zap.Error(err))
-		return nil, fmt.Errorf("getting GPU details for provider %s: %w", id.String(), err)
+		return nil, fmt.Errorf("failed to query GPU details: %w", err)
 	}
 	defer rows.Close()
 
-	var gpus []models.GPUDetail
 	for rows.Next() {
-		gpu := models.GPUDetail{}
+		var gpu models.GPUDetail
 		if err := rows.Scan(&gpu.ModelName, &gpu.VRAM, &gpu.DriverVersion); err != nil {
-			pps.logger.Error("Failed to scan GPU detail row", zap.String("provider_id", id.String()), zap.Error(err))
-			return nil, fmt.Errorf("scanning GPU detail for provider %s: %w", id.String(), err)
+			return nil, fmt.Errorf("failed to scan GPU detail: %w", err)
 		}
-		gpus = append(gpus, gpu)
+		provider.GPUs = append(provider.GPUs, gpu)
 	}
-	if err := rows.Err(); err != nil {
-		pps.logger.Error("Error iterating over GPU detail rows", zap.String("provider_id", id.String()), zap.Error(err))
-		return nil, fmt.Errorf("iterating GPU details for provider %s: %w", id.String(), err)
-	}
-	provider.GPUs = gpus
 
-	pps.logger.Debug("Successfully retrieved provider and GPU details from DB", zap.String("provider_id", id.String()))
-	return provider, nil
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating GPU details rows: %w", err)
+	}
+
+	return &provider, nil
 }
 
-// ListProviders retrieves a list of providers.
-// TODO: Implement comprehensive filtering and pagination.
-func (pps *PostgresProviderStore) ListProviders() ([]*models.Provider, error) {
-	ctx := context.Background()
-	var providers []*models.Provider
+// ListProviders returns a list of all providers, with optional filtering.
+func (pps *PostgresProviderStore) ListProviders(ctx context.Context) ([]*models.Provider, error) {
+	// Query for providers and their GPU details in a single operation
+	// using a LEFT JOIN and JSON aggregation to avoid N+1 problem
+	sqlQuery := `
+	SELECT 
+		p.id, p.owner_id, p.name, p.hostname, p.ip_address, p.status, p.location, 
+		p.registered_at, p.last_seen_at, p.metadata,
+		COALESCE(
+			json_agg(
+				json_build_object(
+					'model_name', g.model_name,
+					'vram_mb', g.vram_mb,
+					'driver_version', g.driver_version
+				)
+			) FILTER (WHERE g.id IS NOT NULL),
+			'[]'::json
+		) as gpus
+	FROM providers p
+	LEFT JOIN gpu_details g ON p.id = g.provider_id
+	GROUP BY p.id
+	`
 
-	// Basic query, to be expanded with filters and pagination
-	listProvidersSQL := `
-    SELECT p.id, p.owner_id, p.name, p.hostname, p.ip_address, p.status, p.location, p.registered_at, p.last_seen_at, p.metadata,
-           COALESCE(json_agg(json_build_object('model_name', g.model_name, 'vram_mb', g.vram_mb, 'driver_version', g.driver_version)) FILTER (WHERE g.provider_id IS NOT NULL), '[]') AS gpus
-    FROM providers p
-    LEFT JOIN gpu_details g ON p.id = g.provider_id
-    GROUP BY p.id
-    ORDER BY p.registered_at DESC
-    `
-	// Note: The COALESCE and FILTER are to handle providers with no GPUs correctly, returning an empty JSON array '[]' for gpus.
-
-	rows, err := pps.db.Query(ctx, listProvidersSQL)
+	rows, err := pps.db.Query(ctx, sqlQuery)
 	if err != nil {
-		pps.logger.Error("Failed to list providers from DB", zap.Error(err))
-		return nil, fmt.Errorf("listing providers: %w", err)
+		return nil, fmt.Errorf("failed to query providers: %w", err)
 	}
 	defer rows.Close()
 
+	providers := make([]*models.Provider, 0)
+
 	for rows.Next() {
-		provider := models.Provider{}
-		var metadataBytes []byte
-		var gpusBytes []byte // To scan the aggregated JSON for GPUs
+		var provider models.Provider
+		var metadataJSON, gpusJSON []byte
+		var hostname, ipAddress, location sql.NullString // For handling nullable fields
 
 		err := rows.Scan(
 			&provider.ID,
 			&provider.OwnerID,
 			&provider.Name,
-			&provider.Hostname,
-			&provider.IPAddress,
+			&hostname,
+			&ipAddress,
 			&provider.Status,
-			&provider.Location,
+			&location,
 			&provider.RegisteredAt,
 			&provider.LastSeenAt,
-			&metadataBytes,
-			&gpusBytes,
+			&metadataJSON,
+			&gpusJSON,
 		)
+
 		if err != nil {
-			pps.logger.Error("Failed to scan provider row for ListProviders", zap.Error(err))
-			continue // Skip problematic row
+			return nil, fmt.Errorf("failed to scan provider: %w", err)
 		}
 
-		if len(metadataBytes) > 0 && string(metadataBytes) != "null" {
-			if err := json.Unmarshal(metadataBytes, &provider.Metadata); err != nil {
-				pps.logger.Warn("Failed to unmarshal metadata for provider in ListProviders", zap.String("provider_id", provider.ID.String()), zap.Error(err))
-				provider.Metadata = nil
-			}
+		// Handle null fields
+		if hostname.Valid {
+			provider.Hostname = hostname.String
+		}
+		if ipAddress.Valid {
+			provider.IPAddress = ipAddress.String
+		}
+		if location.Valid {
+			provider.Location = location.String
 		}
 
-		if len(gpusBytes) > 0 {
-			if err := json.Unmarshal(gpusBytes, &provider.GPUs); err != nil {
-				pps.logger.Warn("Failed to unmarshal GPUs for provider in ListProviders", zap.String("provider_id", provider.ID.String()), zap.Error(err))
-				provider.GPUs = []models.GPUDetail{} // Ensure it's an empty slice, not nil
+		// Unmarshal metadata if not null
+		if len(metadataJSON) > 0 && !strings.EqualFold(string(metadataJSON), "null") {
+			var metadata map[string]interface{}
+			if err := json.Unmarshal(metadataJSON, &metadata); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal metadata for provider %s: %w", provider.ID, err)
 			}
+			provider.Metadata = metadata
+		}
+
+		// Unmarshal GPU details
+		if len(gpusJSON) > 0 && !strings.EqualFold(string(gpusJSON), "null") && !strings.EqualFold(string(gpusJSON), "[]") {
+			var gpus []models.GPUDetail
+			if err := json.Unmarshal(gpusJSON, &gpus); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal GPU details for provider %s: %w", provider.ID, err)
+			}
+			provider.GPUs = gpus
 		} else {
-			provider.GPUs = []models.GPUDetail{} // Ensure it's an empty slice if no GPUs
+			provider.GPUs = []models.GPUDetail{} // Empty slice instead of nil
 		}
 
 		providers = append(providers, &provider)
 	}
-	if err := rows.Err(); err != nil {
-		pps.logger.Error("Error iterating over provider rows in ListProviders", zap.Error(err))
-		return nil, fmt.Errorf("iterating provider rows for ListProviders: %w", err)
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating provider rows: %w", err)
 	}
 
-	pps.logger.Debug("Successfully listed providers from DB", zap.Int("count", len(providers)))
 	return providers, nil
 }
 
-// UpdateProvider updates an existing provider's details.
-// TODO: Handle GPU details update (e.g., delete existing and insert new ones, or a more sophisticated diff).
-func (pps *PostgresProviderStore) UpdateProvider(id uuid.UUID, updatedProvider *models.Provider) error {
-	ctx := context.Background()
-	updatedProvider.LastSeenAt = time.Now().UTC()
-
-	// For a full update, it's often easier to manage with a transaction if GPUs are also updated.
+// UpdateProvider updates an existing provider in the database.
+func (pps *PostgresProviderStore) UpdateProvider(ctx context.Context, id uuid.UUID, updatedProvider *models.Provider) error {
+	// Start a transaction
 	tx, err := pps.db.Begin(ctx)
 	if err != nil {
-		return fmt.Errorf("beginning transaction for UpdateProvider: %w", err)
+		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer tx.Rollback(ctx) // Rollback if not committed
 
-	updateSQL := `
-	UPDATE providers
-	SET owner_id = $1, name = $2, hostname = $3, ip_address = $4, status = $5, location = $6, last_seen_at = $7, metadata = $8
+	// Update the provider record
+	metadataJSON, err := json.Marshal(updatedProvider.Metadata)
+	if err != nil {
+		return fmt.Errorf("failed to marshal metadata: %w", err)
+	}
+
+	sqlProvider := `
+	UPDATE providers SET 
+		owner_id = $1,
+		name = $2,
+		hostname = $3,
+		ip_address = $4,
+		status = $5,
+		location = $6,
+		last_seen_at = $7,
+		metadata = $8
 	WHERE id = $9
 	`
-	cmdTag, err := tx.Exec(ctx, updateSQL,
+
+	result, err := tx.Exec(ctx, sqlProvider,
 		updatedProvider.OwnerID,
 		updatedProvider.Name,
 		updatedProvider.Hostname,
@@ -321,122 +361,121 @@ func (pps *PostgresProviderStore) UpdateProvider(id uuid.UUID, updatedProvider *
 		updatedProvider.Status,
 		updatedProvider.Location,
 		updatedProvider.LastSeenAt,
-		updatedProvider.Metadata,
+		metadataJSON,
 		id,
 	)
 	if err != nil {
-		pps.logger.Error("Failed to update provider in DB", zap.String("provider_id", id.String()), zap.Error(err))
-		return fmt.Errorf("updating provider %s: %w", id.String(), err)
+		return fmt.Errorf("failed to update provider: %w", err)
 	}
-	if cmdTag.RowsAffected() == 0 {
+
+	if rowsAffected := result.RowsAffected(); rowsAffected == 0 {
 		return models.ErrProviderNotFound
 	}
 
-	// GPU Management for UpdateProvider:
-	// 1. Delete existing GPU details for this provider.
-	// 2. Insert new GPU details from updatedProvider.GPUs.
-	deleteGpusSQL := `DELETE FROM gpu_details WHERE provider_id = $1`
-	_, err = tx.Exec(ctx, deleteGpusSQL, id)
+	// Delete existing GPU details for this provider
+	sqlDeleteGPUs := `DELETE FROM gpu_details WHERE provider_id = $1`
+	_, err = tx.Exec(ctx, sqlDeleteGPUs, id)
 	if err != nil {
-		pps.logger.Error("Failed to delete old GPU details during update", zap.String("provider_id", id.String()), zap.Error(err))
-		return fmt.Errorf("deleting old gpus for provider %s: %w", id.String(), err)
+		return fmt.Errorf("failed to delete existing GPU details: %w", err)
 	}
 
-	addGpuDetailSQL := `
-	INSERT INTO gpu_details (provider_id, model_name, vram_mb, driver_version)
-	VALUES ($1, $2, $3, $4)
+	// Insert updated GPU details
+	sqlGPU := `
+	INSERT INTO gpu_details (
+		provider_id, model_name, vram_mb, driver_version
+	) VALUES ($1, $2, $3, $4)
 	`
+
 	for _, gpu := range updatedProvider.GPUs {
-		_, err = tx.Exec(ctx, addGpuDetailSQL, id, gpu.ModelName, gpu.VRAM, gpu.DriverVersion)
+		_, err = tx.Exec(ctx, sqlGPU,
+			id,
+			gpu.ModelName,
+			gpu.VRAM,
+			gpu.DriverVersion,
+		)
 		if err != nil {
-			pps.logger.Error("Failed to insert new GPU detail during update",
-				zap.String("provider_id", id.String()),
-				zap.String("gpu_model", gpu.ModelName),
-				zap.Error(err),
-			)
-			return fmt.Errorf("inserting new GPU detail for provider %s: %w", id.String(), err)
+			return fmt.Errorf("failed to insert updated GPU detail: %w", err)
 		}
 	}
 
+	// Commit the transaction
 	if err = tx.Commit(ctx); err != nil {
-		pps.logger.Error("Failed to commit transaction for UpdateProvider", zap.String("provider_id", id.String()), zap.Error(err))
-		return fmt.Errorf("committing transaction for UpdateProvider: %w", err)
+		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	pps.logger.Info("Successfully updated provider and its GPU details in DB", zap.String("provider_id", id.String()))
 	return nil
 }
 
-// DeleteProvider removes a provider and its associated GPU details (due to ON DELETE CASCADE).
-func (pps *PostgresProviderStore) DeleteProvider(id uuid.UUID) error {
-	ctx := context.Background()
-	deleteSQL := `DELETE FROM providers WHERE id = $1`
-	cmdTag, err := pps.db.Exec(ctx, deleteSQL, id)
+// DeleteProvider removes a provider from the database.
+func (pps *PostgresProviderStore) DeleteProvider(ctx context.Context, id uuid.UUID) error {
+	// The GPU details will be automatically deleted due to ON DELETE CASCADE
+
+	sqlProvider := `DELETE FROM providers WHERE id = $1`
+	result, err := pps.db.Exec(ctx, sqlProvider, id)
 	if err != nil {
-		pps.logger.Error("Failed to delete provider from DB", zap.String("provider_id", id.String()), zap.Error(err))
-		return fmt.Errorf("deleting provider %s: %w", id.String(), err)
+		return fmt.Errorf("failed to delete provider: %w", err)
 	}
-	if cmdTag.RowsAffected() == 0 {
+
+	if rowsAffected := result.RowsAffected(); rowsAffected == 0 {
 		return models.ErrProviderNotFound
 	}
-	pps.logger.Info("Successfully deleted provider from DB", zap.String("provider_id", id.String()))
+
 	return nil
 }
 
-// UpdateProviderStatus updates only the status and last_seen_at timestamp of a provider.
-func (pps *PostgresProviderStore) UpdateProviderStatus(id uuid.UUID, status models.ProviderStatus) error {
-	ctx := context.Background()
-	updateStatusSQL := `
-	UPDATE providers
+// UpdateProviderStatus updates the status of a specific provider.
+func (pps *PostgresProviderStore) UpdateProviderStatus(ctx context.Context, id uuid.UUID, status models.ProviderStatus) error {
+	now := time.Now().UTC()
+	sql := `
+	UPDATE providers 
 	SET status = $1, last_seen_at = $2
 	WHERE id = $3
 	`
-	lastSeenAt := time.Now().UTC()
-	cmdTag, err := pps.db.Exec(ctx, updateStatusSQL, status, lastSeenAt, id)
+
+	result, err := pps.db.Exec(ctx, sql, status, now, id)
 	if err != nil {
-		pps.logger.Error("Failed to update provider status in DB", zap.String("provider_id", id.String()), zap.Error(err))
-		return fmt.Errorf("updating status for provider %s: %w", id.String(), err)
+		return fmt.Errorf("failed to update provider status: %w", err)
 	}
-	if cmdTag.RowsAffected() == 0 {
+
+	if rowsAffected := result.RowsAffected(); rowsAffected == 0 {
 		return models.ErrProviderNotFound
 	}
-	pps.logger.Info("Successfully updated provider status in DB", zap.String("provider_id", id.String()), zap.String("new_status", string(status)))
+
 	return nil
 }
 
-// UpdateProviderHeartbeat updates the last_seen_at timestamp and potentially sets status to idle.
-func (pps *PostgresProviderStore) UpdateProviderHeartbeat(id uuid.UUID) error {
-	ctx := context.Background()
-	updateHeartbeatSQL := `
-	UPDATE providers
+// UpdateProviderHeartbeat updates the LastSeenAt timestamp for a provider.
+func (pps *PostgresProviderStore) UpdateProviderHeartbeat(ctx context.Context, id uuid.UUID) error {
+	now := time.Now().UTC()
+
+	// Also update status to idle if it was offline or error
+	sql := `
+	UPDATE providers 
 	SET last_seen_at = $1,
-	    status = CASE
-	                 WHEN status = $2 OR status = $3 THEN $4
-	                 ELSE status
-	             END
-	WHERE id = $5
+		status = CASE 
+			WHEN status = 'offline' OR status = 'error' THEN 'idle'::text 
+			ELSE status 
+		END
+	WHERE id = $2
 	`
-	lastSeenAt := time.Now().UTC()
-	cmdTag, err := pps.db.Exec(ctx, updateHeartbeatSQL,
-		lastSeenAt,
-		models.StatusOffline,
-		models.StatusError,
-		models.StatusIdle,
-		id,
-	)
+
+	result, err := pps.db.Exec(ctx, sql, now, id)
 	if err != nil {
-		pps.logger.Error("Failed to update provider heartbeat in DB", zap.String("provider_id", id.String()), zap.Error(err))
-		return fmt.Errorf("updating heartbeat for provider %s: %w", id.String(), err)
+		return fmt.Errorf("failed to update provider heartbeat: %w", err)
 	}
-	if cmdTag.RowsAffected() == 0 {
+
+	if rowsAffected := result.RowsAffected(); rowsAffected == 0 {
 		return models.ErrProviderNotFound
 	}
-	pps.logger.Info("Successfully updated provider heartbeat in DB", zap.String("provider_id", id.String()))
+
 	return nil
 }
 
-// Close is a placeholder as pgxpool.Pool is managed externally.
+// Close closes the database connection pool.
 func (pps *PostgresProviderStore) Close() error {
-	pps.logger.Info("PostgresProviderStore Close called. Pool management is external.")
+	if pps.db != nil {
+		pps.db.Close()
+		pps.logger.Info("Closed PostgreSQL provider store connection pool")
+	}
 	return nil
 }

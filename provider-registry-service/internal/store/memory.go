@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"sync"
 
 	"github.com/dante-gpu/dante-backend/provider-registry-service/internal/models"
@@ -21,8 +22,22 @@ func NewInMemoryProviderStore() *InMemoryProviderStore {
 	}
 }
 
+// Initialize sets up the in-memory store. For this implementation,
+// there's no need for real initialization since the map is created in the constructor.
+func (s *InMemoryProviderStore) Initialize(ctx context.Context) error {
+	// Nothing to do for in-memory store
+	return nil
+}
+
+// Close releases any resources. For this implementation, there are no
+// external resources to release.
+func (s *InMemoryProviderStore) Close() error {
+	// Nothing to close for in-memory store
+	return nil
+}
+
 // AddProvider adds a new provider to the store.
-func (s *InMemoryProviderStore) AddProvider(provider *models.Provider) error {
+func (s *InMemoryProviderStore) AddProvider(ctx context.Context, provider *models.Provider) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -35,7 +50,7 @@ func (s *InMemoryProviderStore) AddProvider(provider *models.Provider) error {
 }
 
 // GetProvider retrieves a provider by its ID.
-func (s *InMemoryProviderStore) GetProvider(id uuid.UUID) (*models.Provider, error) {
+func (s *InMemoryProviderStore) GetProvider(ctx context.Context, id uuid.UUID) (*models.Provider, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -48,7 +63,7 @@ func (s *InMemoryProviderStore) GetProvider(id uuid.UUID) (*models.Provider, err
 
 // ListProviders returns a list of all providers, with optional filtering (TODO).
 // For now, it returns all providers.
-func (s *InMemoryProviderStore) ListProviders( /* filters map[string]string */ ) ([]*models.Provider, error) {
+func (s *InMemoryProviderStore) ListProviders(ctx context.Context) ([]*models.Provider, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -60,7 +75,7 @@ func (s *InMemoryProviderStore) ListProviders( /* filters map[string]string */ )
 }
 
 // UpdateProvider updates an existing provider in the store.
-func (s *InMemoryProviderStore) UpdateProvider(id uuid.UUID, updatedProvider *models.Provider) error {
+func (s *InMemoryProviderStore) UpdateProvider(ctx context.Context, id uuid.UUID, updatedProvider *models.Provider) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -75,7 +90,7 @@ func (s *InMemoryProviderStore) UpdateProvider(id uuid.UUID, updatedProvider *mo
 }
 
 // DeleteProvider removes a provider from the store.
-func (s *InMemoryProviderStore) DeleteProvider(id uuid.UUID) error {
+func (s *InMemoryProviderStore) DeleteProvider(ctx context.Context, id uuid.UUID) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -87,7 +102,7 @@ func (s *InMemoryProviderStore) DeleteProvider(id uuid.UUID) error {
 }
 
 // UpdateProviderStatus updates the status of a specific provider.
-func (s *InMemoryProviderStore) UpdateProviderStatus(id uuid.UUID, status models.ProviderStatus) error {
+func (s *InMemoryProviderStore) UpdateProviderStatus(ctx context.Context, id uuid.UUID, status models.ProviderStatus) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -101,7 +116,7 @@ func (s *InMemoryProviderStore) UpdateProviderStatus(id uuid.UUID, status models
 }
 
 // UpdateProviderHeartbeat updates the LastSeenAt timestamp for a provider.
-func (s *InMemoryProviderStore) UpdateProviderHeartbeat(id uuid.UUID) error {
+func (s *InMemoryProviderStore) UpdateProviderHeartbeat(ctx context.Context, id uuid.UUID) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

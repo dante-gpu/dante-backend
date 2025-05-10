@@ -1,0 +1,17 @@
+port: ":8002"
+log_level: "info"
+request_timeout: 30s # Default request timeout for HTTP server
+
+# Database Configuration
+database_url: "postgresql://user:password@localhost:5432/dante_registry?sslmode=disable" # TODO: Update with your actual DB credentials and name
+
+# Consul Configuration
+consul_address: "localhost:8500"
+service_name: "provider-registry"
+service_id_prefix: "provider-reg-"
+service_tags:
+  - "dante"
+  - "registry"
+health_check_path: "/health"
+health_check_interval: 10s
+health_check_timeout: 2s 

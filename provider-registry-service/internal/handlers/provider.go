@@ -16,13 +16,13 @@ import (
 // ProviderStore defines the interface for provider storage operations.
 // This allows us to use the in-memory store or a DB store interchangeably.
 type ProviderStore interface {
-	AddProvider(provider *models.Provider) error
-	GetProvider(id uuid.UUID) (*models.Provider, error)
-	ListProviders() ([]*models.Provider, error)
-	UpdateProvider(id uuid.UUID, updatedProvider *models.Provider) error
-	DeleteProvider(id uuid.UUID) error
-	UpdateProviderStatus(id uuid.UUID, status models.ProviderStatus) error
-	UpdateProviderHeartbeat(id uuid.UUID) error
+	AddProvider(ctx context.Context, provider *models.Provider) error
+	GetProvider(ctx context.Context, id uuid.UUID) (*models.Provider, error)
+	ListProviders(ctx context.Context) ([]*models.Provider, error)
+	UpdateProvider(ctx context.Context, id uuid.UUID, updatedProvider *models.Provider) error
+	DeleteProvider(ctx context.Context, id uuid.UUID) error
+	UpdateProviderStatus(ctx context.Context, id uuid.UUID, status models.ProviderStatus) error
+	UpdateProviderHeartbeat(ctx context.Context, id uuid.UUID) error
 	Initialize(ctx context.Context) error
 	Close() error
 }
@@ -96,7 +96,7 @@ func (h *ProviderHandler) RegisterProvider(w http.ResponseWriter, r *http.Reques
 
 	provider := models.NewProvider(req.OwnerID, req.Name, req.Hostname, req.IPAddress, req.Location, req.GPUs, req.Metadata)
 
-	if err := h.Store.AddProvider(provider); err != nil {
+	if err := h.Store.AddProvider(r.Context(), provider); err != nil {
 		if err == models.ErrProviderAlreadyExists {
 			RespondWithError(w, http.StatusConflict, err.Error())
 		} else {
@@ -113,7 +113,7 @@ func (h *ProviderHandler) RegisterProvider(w http.ResponseWriter, r *http.Reques
 // ListProviders retrieves a list of registered providers.
 func (h *ProviderHandler) ListProviders(w http.ResponseWriter, r *http.Request) {
 	// TODO: Implement filtering based on query parameters 👀👨🏻‍🍳
-	providers, err := h.Store.ListProviders()
+	providers, err := h.Store.ListProviders(r.Context())
 	if err != nil {
 		h.Logger.Error("Failed to list providers from store", zap.Error(err))
 		RespondWithError(w, http.StatusInternalServerError, "Failed to retrieve providers")
@@ -131,7 +131,7 @@ func (h *ProviderHandler) GetProvider(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	provider, err := h.Store.GetProvider(providerID)
+	provider, err := h.Store.GetProvider(r.Context(), providerID)
 	if err != nil {
 		if err == models.ErrProviderNotFound {
 			RespondWithError(w, http.StatusNotFound, err.Error())
@@ -166,7 +166,7 @@ func (h *ProviderHandler) UpdateProvider(w http.ResponseWriter, r *http.Request)
 	// For in-memory, we might need to explicitly set LastSeenAt if not using the model methods.
 	req.LastSeenAt = time.Now().UTC()
 
-	if err := h.Store.UpdateProvider(providerID, &req); err != nil {
+	if err := h.Store.UpdateProvider(r.Context(), providerID, &req); err != nil {
 		if err == models.ErrProviderNotFound {
 			RespondWithError(w, http.StatusNotFound, err.Error())
 		} else {
@@ -196,7 +196,7 @@ func (h *ProviderHandler) UpdateProviderStatus(w http.ResponseWriter, r *http.Re
 
 	// Validate status value (optional, if ProviderStatus has more complex rules)
 
-	if err := h.Store.UpdateProviderStatus(providerID, req.Status); err != nil {
+	if err := h.Store.UpdateProviderStatus(r.Context(), providerID, req.Status); err != nil {
 		if err == models.ErrProviderNotFound {
 			RespondWithError(w, http.StatusNotFound, err.Error())
 		} else {
@@ -217,7 +217,7 @@ func (h *ProviderHandler) ProviderHeartbeat(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if err := h.Store.UpdateProviderHeartbeat(providerID); err != nil {
+	if err := h.Store.UpdateProviderHeartbeat(r.Context(), providerID); err != nil {
 		if err == models.ErrProviderNotFound {
 			RespondWithError(w, http.StatusNotFound, err.Error())
 		} else {
@@ -238,7 +238,7 @@ func (h *ProviderHandler) DeregisterProvider(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	if err := h.Store.DeleteProvider(providerID); err != nil {
+	if err := h.Store.DeleteProvider(r.Context(), providerID); err != nil {
 		if err == models.ErrProviderNotFound {
 			RespondWithError(w, http.StatusNotFound, err.Error())
 		} else {
