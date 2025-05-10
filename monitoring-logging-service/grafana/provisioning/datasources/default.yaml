@@ -1,0 +1,54 @@
+# API version for provisioning. This is Grafana's own versioning for provisioning files.
+apiVersion: 1
+
+# List of datasources to insert/update depending on name and orgId
+# If a datasource with the same name and orgId already exists, it will be updated.
+
+datasources:
+  # --- Prometheus Datasource ---
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus_dante_gpu # Unique identifier for this datasource
+    access: proxy # Server-side access (Grafana backend calls Prometheus)
+    url: http://prometheus:9090 # URL of the Prometheus server. 'prometheus' is the service name in Docker Compose.
+    isDefault: true # Make this the default datasource for new panels
+    jsonData:
+      # exemplars: # Configure exemplars if Prometheus has them enabled
+      #   - name: "traceID"
+      #     url: "http://jaeger:16686/trace/{$__value}"
+      #     datasourceUid: "jaeger_dante_gpu" # UID of a Jaeger datasource, if configured
+      httpMethod: GET
+      # scrapeInterval: 15s # Default is 15s, can be overridden if needed
+      # queryTimeout: 60s # Default is 60s
+      # Time interval for new series. Default is '1m'.
+      #timeInterval: "1m"
+    # editable: false # Set to true if you want to allow users to edit this datasource in Grafana UI
+
+  # --- Loki Datasource ---
+  - name: Loki
+    type: loki
+    uid: loki_dante_gpu # Unique identifier for this datasource
+    access: proxy # Server-side access
+    url: http://loki:3100 # URL of the Loki server. 'loki' is the service name in Docker Compose.
+    jsonData:
+      # Derived fields are a way to extract fields from log messages and create links.
+      # Example: Extracting a traceID and linking to Jaeger.
+      derivedFields:
+        - datasourceUid: prometheus_dante_gpu # UID for internal linking (e.g. to Prometheus)
+          matcherRegex: "traceID=(\\w+)"
+          name: TraceID
+          url: 'http://jaeger:16686/trace/${__value.raw}' # Assuming Jaeger is running and accessible
+          # urlDisplayLabel: "View Trace"
+
+        # Example: Extracting a JobID for internal app linking
+        # - matcherRegex: "job_id=(\\w{8}-\\w{4}-\\w{4}-\\w{4}-\\w{12})"
+        #   name: JobID
+        #   # url: '/explore?orgId=1&left=%5B"now-1h","now","Loki",%7B"expr":"%7Bjob_id%3D\\"${__value.raw}\\"\\"%7D"%7D%5D'
+        #   urlDisplayLabel: "View Job Logs"
+
+      # Default lines to show in Loki Explore. Default is 1000.
+      # maxLines: 1000
+
+      # Optional: Define how labels from logs are mapped to Prometheus labels for log metrics.
+      #பீprometheus_alerts: true # Enable alerting features with Loki
+    # editable: false # Set to true to allow UI edits 

@@ -1,0 +1,58 @@
+global:
+  scrape_interval: 15s # Default scrape interval
+  evaluation_interval: 15s # Default evaluation interval for rules
+
+# Alertmanager configuration (placeholder, not fully configured)
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: [] # e.g., ['alertmanager:9093']
+
+# Rule files for recording rules and alerts (placeholder)
+rule_files:
+  # - "alert.rules.yml"
+
+scrape_configs:
+  - job_name: 'prometheus' # Scrape Prometheus itself
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'consul-services' # Discover services from Consul
+    consul_sd_configs:
+      - server: 'consul:8500' # Address of the Consul server
+        # scheme: http # Default scheme
+        # services: [] # Optional: list of service names to discover, if empty all services are considered
+        # tags: [] # Optional: list of tags to filter services
+    relabel_configs:
+      # Example: Keep only services that have a 'metrics_path' tag
+      - source_labels: [__meta_consul_service_tags]
+        regex: .*,metrics_path=([^,]+),.*
+        action: keep
+      # Use the value of 'metrics_path' tag as the metrics path
+      - source_labels: [__meta_consul_service_tags]
+        regex: .*,metrics_path=([^,]+),.*
+        replacement: ${1}
+        target_label: __metrics_path__
+      # Set address from Consul service address and port
+      - source_labels: [__meta_consul_service_address, __meta_consul_service_port]
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: ${1}:${2}
+        target_label: __address__
+      # Set instance label from Consul service ID
+      - source_labels: [__meta_consul_service_id]
+        target_label: instance
+      # Set service name from Consul service name
+      - source_labels: [__meta_consul_service]
+        target_label: service
+
+  # Example placeholder for scraping a specific Go service (e.g., api-gateway)
+  # This would be used if Consul discovery isn't set up for it or for specific overrides.
+  # - job_name: 'api-gateway'
+  #   static_configs:
+  #     - targets: ['api-gateway:8080'] # Assuming api-gateway is resolvable and metrics are on /metrics
+  #   metrics_path: /metrics # Default is /metrics, can be overridden
+
+  # TODO:
+  # - Add scrape configs for all relevant services (auth-service, provider-registry, scheduler, storage)
+  #   either via Consul service discovery (preferred) or static configs.
+  # - Ensure each service exposes a /metrics endpoint. 

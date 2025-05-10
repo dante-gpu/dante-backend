@@ -1,0 +1,62 @@
+global:
+  resolve_timeout: 5m
+  # smtp_smarthost: 'localhost:25'
+  # smtp_from: 'alertmanager@dantegpu.com'
+  # smtp_require_tls: false
+
+route:
+  receiver: 'default-receiver'
+  group_by: ['alertname', 'cluster', 'service']
+  # How long to initially wait to send a notification for a group
+  # of alerts. Allows time for more alerts to arrive before sending.
+  group_wait: 30s
+  # How long to wait before sending a notification about new alerts that
+  # are added to a group of alerts for which an initial notification has
+  # already been sent.
+  group_interval: 5m
+  # How long to wait before re-sending a notification if the alert is still firing.
+  repeat_interval: 4h
+
+  # A default route ensures all alerts are sent to the default receiver.
+  # Specific routes can be added to route different alerts to different receivers.
+  # routes:
+  #   - receiver: 'team-X-pager'
+  #     match:
+  #       severity: 'critical'
+  #     continue: true # Process further routes
+  #   - receiver: 'team-Y-email'
+  #     match_re:
+  #       service: ^(service1|service2)$
+
+receivers:
+  - name: 'default-receiver'
+    # This is a placeholder. In a real setup, you would configure
+    # webhook_configs, email_configs, slack_configs, pagerduty_configs, etc.
+    webhook_configs:
+    # webhook_configs:
+    #   - url: 'http://localhost:5001/mywebhook' # Replace with Dante's webhook URL -virjilakrum
+    #     send_resolved: true
+    # Example for email:
+    # email_configs:
+    #   - to: 'ops-alerts@dantegpu.com'
+    #     send_resolved: true
+    #     headers:
+    #       Subject: 'Grafana Alert: {{ .CommonLabels.alertname }}'
+
+# Inhibition rules allow you to suppress notifications for certain alerts
+# if other alerts are already firing.
+# inhibit_rules:
+#   - source_matchers:
+#       - severity = "critical"
+#     target_matchers:
+#       - severity = "warning"
+#     # Apply inhibition if the alertname is the same and the cluster label is the same.
+#     equal: ['alertname', 'cluster']
+
+templates:
+  # You can specify paths to custom notification templates here.
+  # - '/etc/alertmanager/templates/*.tmpl'
+
+# Note: For Alertmanager to be useful, Prometheus needs to be configured
+# to send alerts to it. This is done in the prometheus.yml file.
+# (Already added a placeholder (:()) in our prometheus.yml) 

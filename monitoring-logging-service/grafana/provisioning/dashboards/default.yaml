@@ -1,0 +1,20 @@
+apiVersion: 1
+
+providers:
+  - name: 'Dante GPU Platform Dashboards' # A friendly name for the dashboard provider
+    orgId: 1 # Default organization ID
+    folder: 'Dante Platform' # Optional: The folder in Grafana UI where these dashboards will be placed
+    folderUid: 'dante-platform-folder' # Optional: A unique ID for the folder
+    type: file # Indicates that dashboards are loaded from files
+    disableDeletion: false # Set to true to prevent users from deleting these dashboards from the UI
+    editable: true # Set to false to prevent users from editing these dashboards from the UI (changes will be overwritten on next provision)
+    options:
+      # path: /var/lib/grafana/dashboards # Path to the directory where dashboard JSON files are stored.
+      # Grafana will look for this path inside the Grafana container.
+      # In a Docker setup, this path is typically mounted as a volume.
+      # Example: /etc/grafana/provisioning/dashboards if GF_PATHS_PROVISIONING is /etc/grafana/provisioning
+      # For our structure, we'll assume dashboards are in a subdirectory 'dashboards' relative to where Grafana expects provisioning files.
+      # If GF_PATHS_PROVISIONING=/etc/grafana/provisioning, Grafana looks for this provider config in /etc/grafana/provisioning/dashboards,
+      # and then the path here would be relative to that, or an absolute path.
+      # Let's use an absolute path within the container for clarity, which will be mapped from our project.
+      path: /etc/grafana/provisioning/dashboards/dante-platform # Dashboards will be in a subfolder for better organization 

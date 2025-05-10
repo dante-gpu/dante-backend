@@ -1,0 +1,186 @@
+version: '3.8'
+
+networks:
+  dante_monitoring_net:
+    driver: bridge
+    name: dante_monitoring_net
+
+volumes:
+  prometheus_data: {}
+  grafana_data: {}
+  loki_data: {}
+  alertmanager_data: {}
+
+services:
+  prometheus:
+    image: prom/prometheus:v2.51.2 # Using a specific recent version
+    container_name: prometheus
+    hostname: prometheus
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+      # - ./prometheus/alert.rules.yml:/etc/prometheus/alert.rules.yml # Mount alert rules if you have them
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--web.enable-lifecycle' # Allows reloading config via HTTP POST to /-/reload
+      - '--web.listen-address=:9090'
+      # - '--log.level=debug' # Uncomment for more verbose logging
+    ports:
+      - "9090:9090"
+    networks:
+      - dante_monitoring_net
+    restart: unless-stopped
+    # healthcheck:
+    #   test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+    #   interval: 30s
+    #   timeout: 5s
+    #   retries: 3
+
+  node-exporter: # Exports host metrics
+    image: prom/node-exporter:v1.7.0
+    container_name: node-exporter
+    hostname: node-exporter
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--path.rootfs=/rootfs'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc|rootfs/var/lib/docker/containers|rootfs/var/lib/docker/overlay2|rootfs/run/docker/netns|rootfs/var/lib/docker/aufs)($$|/)'
+      - '--collector.filesystem.fs-types-exclude=^(autofs|binfmt_misc|bpf|cgroup2?|configfs|debugfs|devpts|devtmpfs|fusectl|hugetlbfs|iso9660|mqueue|nsfs|overlay|proc|procfs|pstore|rpc_pipefs|securityfs|selinuxfs|squashfs|sysfs|tracefs)$$'
+    ports:
+      - "9100:9100"
+    networks:
+      - dante_monitoring_net
+    restart: unless-stopped
+    pid: host # Required for some collectors on Linux
+
+  cadvisor: # Exports container metrics
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: cadvisor
+    hostname: cadvisor
+    ports:
+      - "8080:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      # - /dev/disk/:/dev/disk:ro # Uncomment if you need disk I/O stats
+    privileged: true # Required for cAdvisor to access Docker daemon
+    devices:
+      - /dev/kmsg:/dev/kmsg # Needed on some systems
+    networks:
+      - dante_monitoring_net
+    restart: unless-stopped
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: alertmanager
+    hostname: alertmanager
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml
+      - alertmanager_data:/alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+      # - '--log.level=debug' # Uncomment for more verbose logging
+    networks:
+      - dante_monitoring_net
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:2.9.8 # Using a specific recent version
+    container_name: loki
+    hostname: loki
+    ports:
+      - "3100:3100" # HTTP port
+      - "9096:9096" # gRPC port
+    volumes:
+      - ./loki/loki-config.yml:/etc/loki/loki-config.yml
+      - loki_data:/loki # Persistent storage for Loki data (index, chunks)
+    command: -config.file=/etc/loki/loki-config.yml
+    networks:
+      - dante_monitoring_net
+    restart: unless-stopped
+    # healthcheck:
+    #   test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3100/ready"]
+    #   interval: 15s
+    #   timeout: 5s
+    #   retries: 3
+
+  promtail:
+    image: grafana/promtail:2.9.8
+    container_name: promtail
+    hostname: promtail
+    volumes:
+      - ./promtail/promtail-config.yml:/etc/promtail/config.yml
+      - /var/log:/var/log # Path to host logs (adjust if your app logs are elsewhere)
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro # Docker container logs
+      # - /var/run/docker.sock:/var/run/docker.sock # Needed if Promtail discovers Docker containers via API
+    command: -config.file=/etc/promtail/config.yml
+    networks:
+      - dante_monitoring_net
+    restart: unless-stopped
+    depends_on:
+      - loki
+
+  grafana:
+    image: grafana/grafana:10.4.2 # Using a specific recent version
+    container_name: grafana
+    hostname: grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./grafana/grafana.ini:/etc/grafana/grafana.ini # Main Grafana configuration
+      - grafana_data:/var/lib/grafana # Persistent storage for Grafana (dashboards, users, etc.)
+      # Provisioning datasources and dashboards
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards # This is the directory referenced in dashboards/default.yaml provider
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=DanteGPUAdmin!2024 # Matches grafana.ini, can be set here
+      - GF_PATHS_PROVISIONING=/etc/grafana/provisioning # Tells Grafana where to look for provisioning files
+      - GF_PATHS_CONFIG=/etc/grafana/grafana.ini
+      # - GF_LOG_LEVEL=debug # Uncomment for more verbose logging
+      # - GF_AUTH_ANONYMOUS_ENABLED=true
+      # - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin # For easy access during dev, not for prod!
+    networks:
+      - dante_monitoring_net
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+      - loki
+    # user: "472" # Grafana user ID, useful for managing permissions on mounted volumes
+
+# Instructions:
+# 1. Save this file as `docker-compose.yml` in the `monitoring-logging-service` directory.
+# 2. Ensure all referenced configuration files exist in their respective subdirectories (prometheus, grafana, loki, promtail, alertmanager).
+# 3. From the `monitoring-logging-service` directory, run `docker-compose up -d`.
+# 4. Access Grafana at http://localhost:3000 (user: admin, pass: DanteGPUAdmin!2024 - CHANGE THIS!).
+# 5. Access Prometheus at http://localhost:9090.
+# 6. Access Alertmanager at http://localhost:9093.
+# 7. Loki does not have a UI by default, it's queried by Grafana/Promtail.
+# 8. cAdvisor UI at http://localhost:8080 (for container metrics).
+#
+# Important Notes:
+# - Data Persistence: Named volumes (prometheus_data, grafana_data, etc.) are used for data persistence.
+#   These volumes are managed by Docker. Data will persist across container restarts.
+# - Configuration: Configuration files are mounted from your local directory. Changes to these files
+#   will require a restart of the respective service (e.g., `docker-compose restart prometheus`).
+# - Networking: All services are on a custom bridge network `dante_monitoring_net`.
+#   This allows them to resolve each other by service name (e.g., `prometheus:9090`).
+# - Security: The default Grafana admin password is set. CHANGE IT for production.
+#   Alertmanager is open by default; secure it if exposed.
+# - Promtail Log Scraping: Promtail is configured to scrape `/var/log` and Docker container logs.
+#   You might need to adjust paths and configurations in `promtail-config.yml` based on where your
+#   application services (api-gateway, auth-service, etc.) write their logs if they are not containerized
+#   or if their container logs are not in the default Docker location.
+# - Resource Usage: This stack can consume significant resources. Monitor your system. 

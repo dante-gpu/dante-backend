@@ -43,9 +43,9 @@ The backend is designed as a collection of independent services communicating vi
     *   **Status:** **Implemented** (Core functionality with MinIO backend, Consul integration, and robust configuration management)
 
 7.  **Monitoring & Logging Service (`monitoring-logging-service/`)**:
-    *   **Language:** N/A (Configuration-based)
-    *   **Description:** Aggregates logs and metrics from all services for monitoring and debugging. Potential stack: Prometheus for metrics, Grafana for visualization, ELK Stack (Elasticsearch, Logstash, Kibana) or Loki/Tempo for logging.
-    *   **Status:** **Planned**
+    *   **Language:** N/A (Configuration-based Docker Compose stack)
+    *   **Description:** Aggregates logs and metrics from all services for monitoring and debugging. The stack includes Prometheus for metrics, Grafana for visualization, Loki for log aggregation, Promtail for log shipping, Alertmanager for handling alerts, Node Exporter for host metrics, and cAdvisor for container metrics.
+    *   **Status:** **Implemented**
 
 8.  **Billing & Payment Service (`billing-payment-service/`)**:
     *   **Language:** TBD (Likely Python or Go)
@@ -75,6 +75,7 @@ While a full `docker-compose.yml` for the entire system is pending, the general 
 3.  **Setup & Run `auth-service`:** Navigate to `auth-service/`, create/activate a Python virtual environment, install dependencies (`pip install -r requirements.txt`), configure the `.env` file (especially `DATABASE_URL`), run database migrations (`alembic upgrade head`), and start the service (`uvicorn app.main:app ...`).
 4.  **Setup & Run `provider-registry-service`:** Navigate to `provider-registry-service/`, build the binary (`go build ./cmd/main.go -o provider-registry`), and run it. The service will register with Consul and connect to PostgreSQL.
 5.  **Setup & Run `scheduler-orchestrator-service`:** Navigate to `scheduler-orchestrator-service/`, build the binary (`go build ./cmd/main.go -o scheduler-orchestrator`), and run it. It will connect to NATS, PostgreSQL, and discover the provider registry service via Consul.
+6.  **Setup & Run `monitoring-logging-service`**: Navigate to `monitoring-logging-service/` and run `docker-compose up -d`. This will start Prometheus, Grafana, Loki, Promtail, Alertmanager, Node Exporter, and cAdvisor. Ensure all configuration files in the respective subdirectories are present.
 
 Refer to the `README.md` file within each service directory for detailed setup and execution instructions.
 
@@ -101,6 +102,7 @@ Refer to the `README.md` file within each service directory for detailed setup a
 - **Service discovery and registration** via Consul
 - **Message passing infrastructure** using NATS and JetStream
 - **Storage service** with MinIO backend, supporting uploads, downloads, presigned URLs, and bucket management.
+- **Comprehensive Monitoring & Logging stack** using Prometheus, Grafana, Loki, Promtail, Alertmanager, Node Exporter, and cAdvisor, deployed via Docker Compose.
 
 ## What Remains To Be Done
 

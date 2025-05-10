@@ -1,0 +1,148 @@
+auth_enabled: false # Authentication is disabled for simplicity in this setup. For production, consider OpenID Connect or other auth methods.
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9096
+  # http_server_read_timeout: 300s # Example: Increase if needed for long-running queries
+  # http_server_write_timeout: 300s # Example
+
+common:
+  path_prefix: /loki # Directory to store Loki data (index, chunks)
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules # For Cortex-style rules, if used
+  replication_factor: 1 # For single node Loki. Increase for clustered setup.
+  # ring: # For clustered Loki using memberlist, Consul, etcd, etc.
+  #   instance_addr: 127.0.0.1 # Address this instance is reachable on
+  #   kvstore:
+  #     store: memberlist # or consul, etcd
+
+ingester:
+  lifecycler:
+    address: 127.0.0.1 # For single node
+    ring:
+      kvstore:
+        store: inmemory # For single node. Use memberlist/consul/etcd for cluster.
+      replication_factor: 1
+    # final_sleep: 0s # How long to wait before shutting down
+  chunk_idle_period: 1h       # Period of inactivity before a chunk is flushed
+  chunk_block_size: 262144    # 256KB, target size of a chunk block
+  chunk_target_size: 1572864  # 1.5MB, target size of a chunk when flushing
+  chunk_retain_period: 30s    # How long to keep chunks in memory after flushing
+  max_transfer_retries: 0     # Disable if not using a remote store that needs retries
+  # wal: # Write Ahead Log for ingesters
+  #   enabled: true
+  #   dir: /loki/wal
+  #   flush_on_shutdown: true # Ensure WAL is flushed before shutdown
+  #   replay_memory_ceiling: 4GB # Max memory for WAL replay
+
+schema_config:
+  configs:
+    - from: 2024-01-01 # Start date for this schema configuration
+      store: boltdb-shipper # Index store type. `tsdb` is newer alternative for larger scale.
+      object_store: filesystem # Chunk store type. Use `s3`, `gcs`, etc for cloud.
+      schema: v13 # Current recommended schema version (check Loki docs for latest)
+      index:
+        prefix: index_ # Prefix for index table names
+        period: 24h   # How frequently to create new index tables (e.g., daily)
+
+storage_config:
+  boltdb_shipper:
+    active_index_directory: /loki/boltdb-shipper-active # Directory for BoltDB index files being actively written to
+    cache_location: /loki/boltdb-shipper-cache # Location for cached BoltDB index files
+    cache_ttl: 24h # How long to cache index files
+    shared_store: filesystem # Must match object_store in schema_config if chunks are separate
+    # resync_interval: 5m # How often to resync with shared store, if applicable
+
+  # Example for AWS S3 (if object_store was s3)
+  # aws:
+  #   s3: s3://<user>:<secret>@<region>/<bucket-name>
+  #   s3forcepathstyle: true # Set to true for MinIO or other S3-compatible services
+
+compactor:
+  working_directory: /loki/compactor # Directory for compactor temporary files
+  compaction_interval: 10m # How often to run compaction
+  # retention_enabled: true # Enable retention in compactor (newer Loki versions)
+  # retention_delete_delay: 2h # How long to wait before deleting data marked for retention
+  # retention_delete_worker_count: 150
+
+limits_config:
+  # Reject old samples to prevent issues with historical data ingestion.
+  reject_old_samples: true
+  reject_old_samples_max_age: 168h # 7 days
+
+  # Max label name length
+  max_label_name_length: 1024
+  # Max label value length
+  max_label_value_length: 2048
+  # Max number of label names per series
+  max_label_names_per_series: 30
+
+  # Ingestion rate limits (per user/tenant, but user is 'fake' if auth_enabled: false)
+  ingestion_rate_mb: 15 # Per-user ingestion rate limit in MB/s
+  ingestion_burst_size_mb: 30 # Per-user allowed burst size in MB
+
+  # Max number of active streams per user. Each unique set of labels is a stream.
+  max_streams_per_user: 10000
+
+  # Query limits
+  max_query_length: 0h # 0 means no limit, set to e.g. 720h for month-long queries max
+  max_query_parallelism: 32 # Max number of goroutines a query can use
+  max_cache_freshness_per_query: 10m # Max age of cached results for a query.
+
+ruler:
+  # Config for PromQL-style alerting rules (if used with Loki)
+  storage:
+    type: local # or configdb
+    local:
+      directory: /loki/rules/tenant_1 # Example path
+  rule_path: /loki/rules_tmp # Temporary path for rule evaluation
+  alertmanager_url: "" # URL of Alertmanager if used, e.g., http://alertmanager:9093
+  # ring:
+  #   kvstore:
+  #     store: inmemory
+  enable_api: true
+  # enable_sharding: false # Set to true if sharding rules across multiple ruler instances
+
+table_manager:
+  retention_deletes_enabled: true # Enable automatic deletion of data older than retention_period
+  retention_period: 720h          # 30 days (30 * 24h). Adjust as needed.
+  # index_tables_provisioning: # For TSDB index, if used
+  #   inactive_read_throughput_limit: 100
+  #   inactive_write_throughput_limit: 100
+  #   provisioning_rate_on_demand_gb: 10
+  #   provisioning_tick_duration: 1m
+  #   read_throughput_limit: 100
+  #   write_throughput_limit: 100
+
+frontend_worker: # For query splitting and parallelization
+  frontend_address: loki-querier:9095 # Address of the query-frontend (if running separately)
+  # grpc_client_config:
+  #   max_recv_msg_size_bytes: 104857600 # 100MB
+  #   max_send_msg_size_bytes: 16777216 # 16MB
+  #   use_insecure_connection: true
+
+# query_range: # Configuration for query splitting and step alignment (for Grafana, etc.)
+  # align_queries_with_step: true
+  # results_cache:
+  #   cache:
+  #     enable_fifocache: true
+  #     fifocache:
+  #       max_size_bytes: "1GB"
+  #       validity: "1h"
+
+# query_scheduler: # For queuing queries in large deployments
+#   max_outstanding_requests_per_tenant: 100
+#   queue_duration: 10s
+
+analytics: # Optional: configuration for Promtail-style pipeline stages within Loki
+  # loki_reporting_enabled: false # Set to true to enable reporting metrics about Loki itself
+  # ... (more specific pipeline configurations if needed)
+
+chunk_store_config:
+  max_look_back_period: 0s # How far back in time to look for chunks. 0 means default (usually retention_period).
+
+# Tracing, if needed (e.g., with Jaeger)
+# tracing:
+#   jaeger_agent_host: jaeger-agent:6831 

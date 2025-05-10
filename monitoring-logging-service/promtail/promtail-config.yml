@@ -1,0 +1,54 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0 # Disabled by default
+
+positions:
+  filename: /tmp/positions.yaml # File to store read positions
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push # Loki push API endpoint
+
+scrape_configs:
+  # Example: Scrape logs from all Docker containers
+  - job_name: containers
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+        # Optional: Filter which containers to scrape logs from
+        # filters:
+        #   - name: label
+        #     values: ["logging=promtail"]
+    relabel_configs:
+      # Relabel Docker container labels to Loki labels
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/(.*)' # Remove leading slash from container name
+        target_label: 'container'
+      - source_labels: ['__meta_docker_container_label_service_name'] # If 'service_name' label exists on container
+        target_label: 'service'
+      - source_labels: ['__meta_docker_container_id']
+        target_label: 'instance'
+      # Add more relabeling rules as needed to extract useful labels
+
+  # Example: Scrape logs from systemd journal
+  # - job_name: journal
+  #   journal:
+  #     max_age: 12h # How far back to read from journal on startup
+  #     path: /var/log/journal
+  #     labels:
+  #       job: systemd-journal
+  #   relabel_configs:
+  #     - source_labels: ['__journal__systemd_unit']
+  #       target_label: 'unit'
+  #     - source_labels: ['__journal__hostname']
+  #       target_label: 'host'
+
+  # TODO:
+  # - Configure specific scrape jobs for each service if not using Docker container discovery widely.
+  # - For example, if services write to specific log files:
+  # - job_name: service-xyz
+  #   static_configs:
+  #   - targets:
+  #       - localhost
+  #     labels:
+  #       job: service-xyz-file
+  #       __path__: /var/log/service-xyz/*.log 
