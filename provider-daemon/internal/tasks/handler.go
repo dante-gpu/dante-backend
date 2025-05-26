@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/dante-gpu/dante-backend/provider-daemon/internal/config"
 	"github.com/dante-gpu/dante-backend/provider-daemon/internal/executor"
@@ -22,19 +21,23 @@ type NatsStatusPublisher interface {
 
 // Handler orchestrates task execution and status reporting.
 type Handler struct {
-	logger   *zap.Logger
-	cfg      *config.Config
-	reporter NatsStatusPublisher // Using the interface for reporting
-	executor executor.Executor   // Interface for task execution
+	logger         *zap.Logger
+	cfg            *config.Config
+	reporter       NatsStatusPublisher // Using the interface for reporting
+	scriptExecutor executor.Executor   // Specifically for script tasks
+	dockerExecutor executor.Executor   // Specifically for Docker tasks
 }
 
 // NewHandler creates a new task handler.
-func NewHandler(cfg *config.Config, logger *zap.Logger, statusPublisher NatsStatusPublisher, exec executor.Executor) *Handler {
+// It requires a logger, config, a status publisher (like the NATS client),
+// and instances of script and Docker executors.
+func NewHandler(cfg *config.Config, logger *zap.Logger, statusPublisher NatsStatusPublisher, scriptExec executor.Executor, dockerExec executor.Executor) *Handler {
 	return &Handler{
-		logger:   logger,
-		cfg:      cfg,
-		reporter: statusPublisher,
-		executor: exec,
+		logger:         logger,
+		cfg:            cfg,
+		reporter:       statusPublisher,
+		scriptExecutor: scriptExec,
+		dockerExecutor: dockerExec, // Store the Docker executor
 	}
 }
 
@@ -48,43 +51,67 @@ func (h *Handler) SetReporter(reporter NatsStatusPublisher) {
 // It creates a workspace, executes the task using the configured executor,
 // and reports status updates (InProgress, Completed, Failed).
 func (h *Handler) HandleTask(task *models.Task) error {
-	h.logger.Info("Handling task", zap.String("job_id", task.JobID), zap.String("job_type", task.JobType))
+	ctx := context.Background() // Create a new context for this task handling
+	// Log the received task with its execution type
+	h.logger.Info("Received task for handling",
+		zap.String("job_id", task.JobID),
+		zap.String("job_name", task.JobName),
+		zap.String("execution_type", string(task.ExecutionType)),
+	)
 
-	// 1. Create a unique workspace for the task
-	// Workspace path: {cfg.WorkspaceDir}/{job_id}
-	workspacePath := filepath.Join(h.cfg.WorkspaceDir, task.JobID)
-	if err := os.MkdirAll(workspacePath, 0755); err != nil {
-		h.logger.Error("Failed to create task workspace", zap.String("job_id", task.JobID), zap.String("workspace", workspacePath), zap.Error(err))
-		// Report failure status immediately if workspace creation fails
-		_ = h.reporter.PublishStatus(models.NewTaskStatusUpdate(task.JobID, h.cfg.InstanceID, models.StatusFailed, fmt.Sprintf("Failed to create workspace: %v", err)))
+	// Initial status update: Preparing
+	h.reporter.PublishStatus(models.NewTaskStatusUpdate(task.JobID, h.cfg.InstanceID, models.StatusPreparing, "Task received, preparing for execution"))
+
+	// Create a unique workspace for this task
+	workspacePath, err := os.MkdirTemp(h.cfg.WorkspaceDir, "task-"+task.JobID+"-")
+	if err != nil {
+		h.logger.Error("Failed to create temporary workspace", zap.String("job_id", task.JobID), zap.Error(err))
+		h.reporter.PublishStatus(models.NewTaskStatusUpdate(task.JobID, h.cfg.InstanceID, models.StatusFailed, "Failed to create workspace"))
 		return fmt.Errorf("failed to create workspace for job %s: %w", task.JobID, err)
 	}
-	h.logger.Info("Task workspace created", zap.String("job_id", task.JobID), zap.String("path", workspacePath))
-
-	// Defer cleanup of the workspace
 	defer func() {
 		if err := os.RemoveAll(workspacePath); err != nil {
-			h.logger.Error("Failed to cleanup task workspace", zap.String("job_id", task.JobID), zap.String("workspace", workspacePath), zap.Error(err))
-		} else {
-			h.logger.Info("Task workspace cleaned up", zap.String("job_id", task.JobID), zap.String("path", workspacePath))
+			h.logger.Error("Failed to clean up workspace", zap.String("job_id", task.JobID), zap.String("path", workspacePath), zap.Error(err))
 		}
 	}()
+	h.logger.Info("Workspace created for task", zap.String("job_id", task.JobID), zap.String("path", workspacePath))
 
-	// 2. Report InProgress status
-	statusInProgress := models.NewTaskStatusUpdate(task.JobID, h.cfg.InstanceID, models.StatusInProgress, "Task execution started.")
-	if err := h.reporter.PublishStatus(statusInProgress); err != nil {
-		h.logger.Warn("Failed to publish InProgress status update", zap.String("job_id", task.JobID), zap.Error(err))
-		// Continue with execution even if status update fails for now
+	var selectedExecutor executor.Executor
+	switch task.ExecutionType {
+	case models.ExecutionTypeScript:
+		if h.scriptExecutor == nil {
+			h.logger.Error("Script executor is not available (nil)", zap.String("job_id", task.JobID))
+			h.reporter.PublishStatus(models.NewTaskStatusUpdate(task.JobID, h.cfg.InstanceID, models.StatusFailed, "Script executor not configured on this daemon"))
+			return fmt.Errorf("script executor not available for job %s", task.JobID)
+		}
+		selectedExecutor = h.scriptExecutor
+		h.logger.Info("Using ScriptExecutor for task", zap.String("job_id", task.JobID))
+	case models.ExecutionTypeDocker:
+		if h.dockerExecutor == nil {
+			h.logger.Error("Docker executor is not available (nil), possibly due to initialization failure.", zap.String("job_id", task.JobID))
+			h.reporter.PublishStatus(models.NewTaskStatusUpdate(task.JobID, h.cfg.InstanceID, models.StatusFailed, "Docker executor not available on this daemon"))
+			return fmt.Errorf("docker executor not available for job %s", task.JobID)
+		}
+		selectedExecutor = h.dockerExecutor
+		h.logger.Info("Using DockerExecutor for task", zap.String("job_id", task.JobID))
+	case models.ExecutionTypeUndefined:
+		h.logger.Error("Task received with undefined execution type", zap.String("job_id", task.JobID))
+		h.reporter.PublishStatus(models.NewTaskStatusUpdate(task.JobID, h.cfg.InstanceID, models.StatusFailed, "Execution type not specified in task"))
+		return fmt.Errorf("execution type not specified for job %s", task.JobID)
+	default:
+		h.logger.Error("Unsupported execution type specified", zap.String("job_id", task.JobID), zap.String("type", string(task.ExecutionType)))
+		h.reporter.PublishStatus(models.NewTaskStatusUpdate(task.JobID, h.cfg.InstanceID, models.StatusFailed, fmt.Sprintf("Unsupported execution type: %s", task.ExecutionType)))
+		return fmt.Errorf("unsupported execution type '%s' for job %s", task.ExecutionType, task.JobID)
 	}
 
-	// 3. Execute the task using the executor
-	// Context for execution (can be enhanced with task-specific timeouts if needed)
-	execCtx, cancelExec := context.WithCancel(context.Background()) // Basic context
-	// If task.JobParams has a timeout, it will be handled by the ScriptExecutor itself.
-	// This context is more for cancelling the overall HandleTask flow if needed, or could pass down to executor.
-	defer cancelExec()
+	// At this point, selectedExecutor is guaranteed to be non-nil if no error was returned.
+	h.logger.Info("Executor selected, proceeding to execute task", zap.String("job_id", task.JobID))
 
-	executionResult := h.executor.Execute(execCtx, task, workspacePath, h.logger)
+	// Report StatusInProgress
+	h.reporter.PublishStatus(models.NewTaskStatusUpdate(task.JobID, h.cfg.InstanceID, models.StatusInProgress, "Task execution started"))
+
+	// 3. Execute the task using the chosen executor.
+	executionResult := selectedExecutor.Execute(ctx, task, workspacePath, h.logger)
 
 	// 4. Report final status based on execution result
 	var finalStatus *models.TaskStatusUpdate

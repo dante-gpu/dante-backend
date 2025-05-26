@@ -4,6 +4,18 @@ import (
 	"time"
 )
 
+// ExecutionType defines the type of execution required for a task.
+type ExecutionType string
+
+const (
+	// ExecutionTypeScript indicates the task should be run as a script.
+	ExecutionTypeScript ExecutionType = "script"
+	// ExecutionTypeDocker indicates the task should be run in a Docker container.
+	ExecutionTypeDocker ExecutionType = "docker"
+	// ExecutionTypeUndefined indicates the execution type was not specified.
+	ExecutionTypeUndefined ExecutionType = ""
+)
+
 // Task represents a unit of work to be dispatched from the scheduler to a provider daemon.
 // It contains essential details from the original job and any specific instructions
 // or context needed by the daemon to execute the job.
@@ -16,6 +28,8 @@ type Task struct {
 	JobType   string                 `json:"job_type"`   // e.g., "ai-training", "data-processing", "script_execution"
 	JobName   string                 `json:"job_name"`   // User-defined name for the job
 	JobParams map[string]interface{} `json:"job_params"` // Job-specific parameters (e.g., script content, dataset URI, hyperparameters, docker_image)
+
+	ExecutionType ExecutionType `json:"execution_type"` // Specifies whether to use ScriptExecutor or DockerExecutor
 
 	// Resource requirements (can be used by daemon for validation or local scheduling if managing multiple local GPUs)
 	GPUTypeNeeded  string `json:"gpu_type_needed,omitempty"`

@@ -36,9 +36,20 @@ func main() {
 	// Create a new ScriptExecutor
 	scriptExec := executor.NewScriptExecutor()
 
-	// Create Task Handler with the ScriptExecutor
+	// Create a new DockerExecutor
+	dockerExec, err := executor.NewDockerExecutor(logger)
+	if err != nil {
+		// Log the error from NewDockerExecutor and decide if it's fatal.
+		// If Docker is essential, os.Exit(1) might be appropriate.
+		// For now, log it and the handler will fail tasks requiring Docker.
+		logger.Error("Failed to initialize Docker executor. Docker tasks will fail.", zap.Error(err))
+		// We can proceed without a dockerExec if script tasks are still valuable.
+		// If dockerExec is nil, the handler will report an error if a Docker task is received.
+	}
+
+	// Create Task Handler, passing both executors.
 	// The NATS client (for status reporting) will be set later to break init cycle.
-	taskHandlerInstance := tasks.NewHandler(cfg, logger, nil, scriptExec) // Pass scriptExec
+	taskHandlerInstance := tasks.NewHandler(cfg, logger, nil, scriptExec, dockerExec)
 
 	// Initialize NATS Client
 	// The NATS client needs the task handler to process incoming messages.
