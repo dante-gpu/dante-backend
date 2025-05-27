@@ -171,15 +171,15 @@ func (s *BillingService) StartRentalSession(ctx context.Context, req *models.Ses
 	}
 
 	// Check if user can afford at least one hour
-	if userWallet.AvailableBalance().LessThan(pricing.TotalHourlyCost) {
+	if userWallet.AvailableBalance().LessThan(pricing.TotalHourlyRate) {
 		return nil, models.NewInsufficientFundsError(
-			pricing.TotalHourlyCost.String(),
+			pricing.TotalHourlyRate.String(),
 			userWallet.AvailableBalance().String(),
 		)
 	}
 
 	// Lock funds for initial hour
-	err = userWallet.LockFunds(pricing.TotalHourlyCost)
+	err = userWallet.LockFunds(pricing.TotalHourlyRate)
 	if err != nil {
 		return nil, err
 	}
@@ -225,7 +225,7 @@ func (s *BillingService) StartRentalSession(ctx context.Context, req *models.Ses
 	txnReq := &models.TransactionCreateRequest{
 		FromWalletID: &userWallet.ID,
 		Type:         models.TransactionTypeSessionStart,
-		Amount:       pricing.TotalHourlyCost,
+		Amount:       pricing.TotalHourlyRate,
 		Description:  fmt.Sprintf("Session start - locked funds for %s", req.GPUModel),
 		SessionID:    &session.ID,
 		JobID:        req.JobID,
@@ -237,12 +237,12 @@ func (s *BillingService) StartRentalSession(ctx context.Context, req *models.Ses
 	}
 
 	// Calculate estimated runtime based on available balance
-	estimatedRuntime := userWallet.AvailableBalance().Div(pricing.TotalHourlyCost)
+	estimatedRuntime := userWallet.AvailableBalance().Div(pricing.TotalHourlyRate)
 
 	response := &models.SessionResponse{
 		Session:             *session,
 		CurrentCost:         decimal.Zero,
-		EstimatedHourlyCost: pricing.TotalHourlyCost,
+		EstimatedHourlyCost: pricing.TotalHourlyRate,
 		RemainingBalance:    userWallet.AvailableBalance(),
 		EstimatedRuntime:    estimatedRuntime,
 	}
