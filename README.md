@@ -14,7 +14,7 @@ The backend is designed as a collection of independent services communicating vi
 
 **Core Components:**
 
-1.  **API Gateway (`api-gateway/`)**: 
+1.  **API Gateway (`api-gateway/`)**:
     *   **Language:** Go
     *   **Description:** The single entry point for all external client requests. Responsible for request routing, JWT authentication/authorization, rate limiting, CORS handling, service discovery (via Consul), load balancing, and reverse proxying to appropriate backend services.
     *   **Status:** **Active Development** (Core proxying, auth, NATS publishing implemented)
@@ -50,9 +50,9 @@ The backend is designed as a collection of independent services communicating vi
     *   **Status:** **Implemented**
 
 8.  **Billing & Payment Service (`billing-payment-service/`)**:
-    *   **Language:** TBD (Likely Python or Go)
-    *   **Description:** Tracks resource usage (GPU time, storage), generates invoices for requesters, and handles payouts to providers. Requires integration with payment gateways (e.g., Stripe, PayPal).
-    *   **Status:** **Planned (Post-MVP)**
+    *   **Language:** Go
+    *   **Description:** Tracks GPU resource usage (GPU time, VRAM allocation), calculates hourly rates based on power consumption, handles dGPU token transactions via Solana blockchain integration, manages user wallets and provider payouts.
+    *   **Status:** **In Development** (dGPU token integration with Solana blockchain)
 
 ---
 
