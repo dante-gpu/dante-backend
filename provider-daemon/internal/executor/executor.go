@@ -379,7 +379,7 @@ func (de *DockerExecutor) Execute(ctx context.Context, task *models.Task, worksp
 				// Attempt to stop the container if it timed out
 				stopCtx, stopCancel := context.WithTimeout(context.Background(), 30*time.Second)
 				defer stopCancel()
-				if stopErr := de.cli.ContainerStop(stopCtx, resp.ID, container.StopOptions{}); stopErr != nil {
+				if stopErr := de.cli.ContainerStop(stopCtx, resp.ID, nil); stopErr != nil {
 					jobLogger.Error("Failed to stop timed-out container", zap.String("id", resp.ID), zap.Error(stopErr))
 				}
 			}
