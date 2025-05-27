@@ -61,7 +61,7 @@ func (h *StorageHandler) RegisterRoutes(r chi.Router) {
 }
 
 // respondWithError sends a JSON error response.
-func (h *StorageHandler) respondWithError(w http.ResponseWriter, r *http.Request, code int, message string, err error) {
+func (h *StorageHandler) respondWithError(w http.ResponseWriter, _ *http.Request, code int, message string, err error) {
 	logFields := []zap.Field{
 		zap.Int("status_code", code),
 		zap.String("error_message", message),
@@ -77,7 +77,7 @@ func (h *StorageHandler) respondWithError(w http.ResponseWriter, r *http.Request
 }
 
 // respondWithJSON sends a JSON success response.
-func (h *StorageHandler) respondWithJSON(w http.ResponseWriter, r *http.Request, code int, payload interface{}) {
+func (h *StorageHandler) respondWithJSON(w http.ResponseWriter, _ *http.Request, code int, payload interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	if payload != nil {

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gagliardetto/solana-go"
+	associatedtokenaccount "github.com/gagliardetto/solana-go/programs/associated-token-account"
 	"github.com/gagliardetto/solana-go/programs/token"
 	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/gagliardetto/solana-go/rpc/ws"
@@ -142,7 +143,7 @@ func (c *Client) GetTokenBalance(ctx context.Context, walletAddress string) (dec
 	balance, err := c.rpcClient.GetTokenAccountBalance(ctx, ata, c.commitment)
 	if err != nil {
 		// If account doesn't exist, balance is zero
-		if rpc.IsAccountNotFoundError(err) {
+		if strings.Contains(err.Error(), "could not find account") {
 			return decimal.Zero, nil
 		}
 		return decimal.Zero, fmt.Errorf("failed to get token balance: %w", err)
@@ -270,19 +271,18 @@ func (c *Client) ConfirmTransaction(ctx context.Context, signature string) error
 					return fmt.Errorf("transaction failed: %v", status.Value[0].Err)
 				}
 
-				if status.Value[0].ConfirmationStatus != nil {
-					switch *status.Value[0].ConfirmationStatus {
-					case rpc.ConfirmationStatusProcessed:
-						if c.commitment == rpc.CommitmentProcessed {
-							return nil
-						}
-					case rpc.ConfirmationStatusConfirmed:
-						if c.commitment == rpc.CommitmentConfirmed || c.commitment == rpc.CommitmentProcessed {
-							return nil
-						}
-					case rpc.ConfirmationStatusFinalized:
+				// Check confirmation status
+				switch status.Value[0].ConfirmationStatus {
+				case rpc.ConfirmationStatusProcessed:
+					if c.commitment == rpc.CommitmentProcessed {
 						return nil
 					}
+				case rpc.ConfirmationStatusConfirmed:
+					if c.commitment == rpc.CommitmentConfirmed || c.commitment == rpc.CommitmentProcessed {
+						return nil
+					}
+				case rpc.ConfirmationStatusFinalized:
+					return nil
 				}
 			}
 
@@ -311,8 +311,8 @@ func (c *Client) CreateAssociatedTokenAccount(ctx context.Context, walletAddress
 		return ata.String(), nil
 	}
 
-	// Create ATA instruction
-	createATAInstruction := token.NewCreateAssociatedTokenAccountInstruction(
+	// Create ATA instruction using associatedtokenaccount package
+	createATAInstruction := associatedtokenaccount.NewCreateInstruction(
 		c.platformWallet, // Payer
 		pubKey,           // Wallet
 		c.tokenMint,      // Token mint
@@ -371,7 +371,7 @@ func (c *Client) CreateAssociatedTokenAccount(ctx context.Context, walletAddress
 // Close closes the Solana client connections
 func (c *Client) Close() error {
 	if c.wsClient != nil {
-		return c.wsClient.Close()
+		c.wsClient.Close()
 	}
 	return nil
 }
@@ -387,7 +387,9 @@ func loadPrivateKey(path string) (solana.PrivateKey, error) {
 		if len(keyBytes) != 64 {
 			return solana.PrivateKey{}, fmt.Errorf("invalid private key length: expected 64 bytes, got %d", len(keyBytes))
 		}
-		return solana.PrivateKeyFromBytes(keyBytes)
+		var privateKey solana.PrivateKey
+		copy(privateKey[:], keyBytes)
+		return privateKey, nil
 	}
 
 	// Try to load from file
@@ -408,7 +410,9 @@ func loadPrivateKey(path string) (solana.PrivateKey, error) {
 			return solana.PrivateKey{}, fmt.Errorf("invalid private key length: expected 64 bytes, got %d", len(keyBytes))
 		}
 
-		return solana.PrivateKeyFromBytes(keyBytes)
+		var privateKey solana.PrivateKey
+		copy(privateKey[:], keyBytes)
+		return privateKey, nil
 	}
 
 	// Generate a new keypair for development (NOT for production)

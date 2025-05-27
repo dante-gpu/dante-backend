@@ -1,10 +1,10 @@
 from sqlalchemy.orm import Session
-from typing import Optional, Any
+from typing import Optional
 import uuid
 
 from app.db.models.user import User
 from app.schemas.user import UserCreate, UserUpdate
-from app.core.security import get_password_hash # I need the hashing function
+from app.core.security import get_password_hash, verify_password # I need the hashing and verification functions
 
 # === Get Operations ===
 
@@ -106,4 +106,4 @@ def authenticate_user(db: Session, username: str, password: str) -> Optional[Use
         return None
     if not verify_password(password, user.hashed_password):
         return None
-    return user 
+    return user

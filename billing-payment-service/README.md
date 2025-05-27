@@ -1,25 +1,48 @@
-# Billing & Payment Service (Dante Backend)
+# Billing & Payment Service
 
-This Go service handles all financial transactions for the Dante GPU Platform, including dGPU token integration via Solana blockchain, usage tracking, pricing calculations, and provider payouts.
+A comprehensive financial management service for the Dante GPU Platform that handles dGPU token transactions, real-time billing, dynamic pricing, and Solana blockchain integration.
 
-## Responsibilities
+## Overview
 
-- **dGPU Token Integration**: Manage transactions using the dGPU token (7xUV6YR3rZMfExPqZiovQSUxpnHxr2KJJqFg1bFrpump) on Solana blockchain
-- **Usage Tracking**: Monitor GPU rental time, VRAM allocation, and power consumption
-- **Dynamic Pricing**: Calculate hourly rates based on GPU specifications, power consumption, and market demand
-- **Wallet Management**: Handle user and provider dGPU token wallets
-- **Payment Processing**: Process rental payments and provider payouts in dGPU tokens
-- **Billing History**: Maintain transaction records and usage reports
-- **VRAM Allocation Pricing**: Calculate costs based on allocated VRAM portions
+The Billing & Payment Service is the financial backbone of the Dante GPU Platform, providing complete payment processing, wallet management, and billing operations using dGPU tokens on the Solana blockchain.
 
-## Tech Stack
+## Core Responsibilities
 
-- **Language**: Go 1.22+
-- **Database**: PostgreSQL (for transaction records and usage tracking)
-- **Blockchain**: Solana (for dGPU token transactions)
-- **Message Queue**: NATS (for real-time usage updates)
-- **Service Discovery**: Consul
-- **Monitoring**: Prometheus metrics
+### Blockchain Integration
+- dGPU token transaction processing (7xUV6YR3rZMfExPqZiovQSUxpnHxr2KJJqFg1bFrpump)
+- Solana blockchain interaction and monitoring
+- Wallet creation and management
+- Transaction verification and confirmation
+- Multi-signature support for security
+
+### Real-time Billing System
+- Session-based billing with automatic monitoring
+- Usage tracking with 1-minute precision
+- Insufficient funds protection and grace periods
+- Automatic session termination on balance depletion
+- Real-time cost calculation and updates
+
+### Dynamic Pricing Engine
+- GPU model-specific base rates
+- VRAM allocation-based pricing (per GB per hour)
+- Power consumption multipliers
+- Dynamic demand and supply adjustments
+- Platform fee calculation and collection
+
+### Wallet Management
+- User and provider dGPU token wallets
+- Balance tracking and transaction history
+- Deposit and withdrawal operations
+- Security features and fraud protection
+
+## Technology Stack
+
+- Go 1.21+ - Primary service language
+- PostgreSQL - Transaction and billing data storage
+- Solana Blockchain - dGPU token transactions
+- NATS JetStream - Real-time event streaming
+- Consul - Service discovery and configuration
+- Prometheus - Metrics and monitoring
 
 ## Key Features
 
@@ -142,16 +165,150 @@ consul:
 - **Monitoring Service**: Track service health and performance
 - **Solana Blockchain**: Execute dGPU token transactions
 
-## Development Status
+## Installation and Setup
 
-- [x] Service structure and configuration
-- [x] Database schema design
-- [x] Solana integration planning
-- [ ] Core billing logic implementation
-- [ ] dGPU token transaction handling
-- [ ] Dynamic pricing engine
-- [ ] VRAM allocation pricing
-- [ ] Provider payout system
-- [ ] API endpoint implementation
-- [ ] Integration testing
-- [ ] Security audit
+### Prerequisites
+
+- Go 1.21 or higher
+- PostgreSQL 14+
+- Solana CLI tools
+- NATS Server 2.9+
+- Consul 1.15+
+
+### Environment Configuration
+
+```bash
+# Solana Configuration
+export SOLANA_RPC_URL="https://api.mainnet-beta.solana.com"
+export DGPU_TOKEN_ADDRESS="7xUV6YR3rZMfExPqZiovQSUxpnHxr2KJJqFg1bFrpump"
+export SOLANA_PRIVATE_KEY="your_base58_private_key"
+
+# Database Configuration
+export DATABASE_URL="postgres://user:pass@localhost:5432/dante_billing"
+
+# Service Configuration
+export PORT="8080"
+export NATS_URL="nats://localhost:4222"
+export CONSUL_URL="http://localhost:8500"
+```
+
+### Build and Run
+
+```bash
+# Clone and build
+git clone <repository-url>
+cd billing-payment-service
+go mod download
+go build -o bin/billing-service cmd/main.go
+
+# Run database migrations
+migrate -path migrations -database $DATABASE_URL up
+
+# Start the service
+./bin/billing-service
+```
+
+### Docker Deployment
+
+```bash
+# Build Docker image
+docker build -t billing-payment-service .
+
+# Run container
+docker run -p 8080:8080 \
+  -e DATABASE_URL="postgres://user:pass@db:5432/dante_billing" \
+  -e SOLANA_RPC_URL="https://api.mainnet-beta.solana.com" \
+  -e DGPU_TOKEN_ADDRESS="7xUV6YR3rZMfExPqZiovQSUxpnHxr2KJJqFg1bFrpump" \
+  billing-payment-service
+```
+
+## Development
+
+### Code Structure
+
+```
+billing-payment-service/
+├── cmd/main.go                    # Application entry point
+├── internal/
+│   ├── config/                    # Configuration management
+│   ├── handlers/                  # HTTP request handlers
+│   ├── models/                    # Data models and schemas
+│   ├── pricing/                   # Pricing engine
+│   ├── service/                   # Business logic
+│   ├── solana/                    # Blockchain integration
+│   └── store/                     # Database operations
+├── migrations/                    # Database migrations
+├── configs/config.yaml           # Configuration file
+└── Dockerfile                    # Container configuration
+```
+
+### Running Tests
+
+```bash
+# Run all tests
+go test ./...
+
+# Run with coverage
+go test -cover ./...
+
+# Run integration tests
+go test -tags=integration ./...
+```
+
+### Database Migrations
+
+```bash
+# Create new migration
+migrate create -ext sql -dir migrations -seq add_new_table
+
+# Run migrations
+migrate -path migrations -database $DATABASE_URL up
+
+# Rollback migrations
+migrate -path migrations -database $DATABASE_URL down 1
+```
+
+## Production Deployment
+
+### Security Considerations
+
+- Store Solana private keys in secure key management systems
+- Use multi-signature wallets for large transactions
+- Enable database encryption at rest
+- Configure rate limiting and DDoS protection
+- Regular security audits and penetration testing
+
+### Monitoring and Alerting
+
+- Set up Prometheus metrics collection
+- Configure Grafana dashboards for financial metrics
+- Enable alerts for transaction failures
+- Monitor blockchain network status
+- Track wallet balance thresholds
+
+### Backup and Recovery
+
+- Regular database backups with point-in-time recovery
+- Secure backup of wallet private keys
+- Disaster recovery procedures
+- Transaction replay capabilities
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Implement changes with comprehensive tests
+4. Update documentation
+5. Submit a pull request
+
+### Development Guidelines
+
+- Follow Go coding standards and best practices
+- Add unit and integration tests for all features
+- Update API documentation for endpoint changes
+- Ensure backward compatibility
+- Test blockchain integration thoroughly
+
+## License
+
+This project is licensed under the MIT License.

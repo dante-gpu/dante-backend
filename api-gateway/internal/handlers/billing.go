@@ -7,7 +7,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"github.com/shopspring/decimal"
 	"go.uber.org/zap"
 
 	"github.com/dante-gpu/dante-backend/api-gateway/internal/billing"
@@ -240,8 +239,8 @@ func (h *BillingHandler) GetGPUMarketplace(w http.ResponseWriter, r *http.Reques
 			},
 		},
 		"filters": map[string]interface{}{
-			"gpu_type": gpuType,
-			"min_vram": minVRAM,
+			"gpu_type":  gpuType,
+			"min_vram":  minVRAM,
 			"max_price": maxPrice,
 		},
 	}
@@ -267,9 +266,9 @@ func (h *BillingHandler) EstimateJobCost(w http.ResponseWriter, r *http.Request)
 
 	// Calculate estimated cost using pricing service
 	pricingReq := map[string]interface{}{
-		"gpu_model":        req.GPUModel,
-		"requested_vram":   req.VRAMRequired,
-		"duration_hours":   req.EstimatedHours,
+		"gpu_model":         req.GPUModel,
+		"requested_vram":    req.VRAMRequired,
+		"duration_hours":    req.EstimatedHours,
 		"estimated_power_w": req.EstimatedPowerW,
 	}
 
@@ -281,8 +280,8 @@ func (h *BillingHandler) EstimateJobCost(w http.ResponseWriter, r *http.Request)
 	}
 
 	response := map[string]interface{}{
-		"estimated_cost":     pricing,
-		"currency":          "dGPU",
+		"estimated_cost": pricing,
+		"currency":       "dGPU",
 		"breakdown": map[string]interface{}{
 			"base_cost":    "calculated from pricing service",
 			"vram_cost":    "calculated from pricing service",

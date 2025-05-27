@@ -10,6 +10,7 @@ require (
 	github.com/hashicorp/consul/api v1.32.1
 	github.com/jackc/pgx/v5 v5.7.4
 	github.com/nats-io/nats.go v1.42.0
+	github.com/shopspring/decimal v1.4.0
 	go.uber.org/zap v1.27.0
 	gopkg.in/yaml.v3 v3.0.1
 )

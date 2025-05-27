@@ -1,11 +1,9 @@
 package gpu
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"os/exec"
 	"regexp"
 	"runtime"
@@ -18,36 +16,36 @@ import (
 
 // GPUInfo represents detailed information about a GPU
 type GPUInfo struct {
-	ID           string  `json:"id"`
-	Name         string  `json:"name"`
-	Vendor       string  `json:"vendor"`
-	Model        string  `json:"model"`
-	VRAMTotal    uint64  `json:"vram_total_mb"`
-	VRAMFree     uint64  `json:"vram_free_mb"`
-	VRAMUsed     uint64  `json:"vram_used_mb"`
-	PowerDraw    uint32  `json:"power_draw_w"`
-	PowerLimit   uint32  `json:"power_limit_w"`
-	Temperature  uint8   `json:"temperature_c"`
-	Utilization  uint8   `json:"utilization_percent"`
-	DriverVersion string `json:"driver_version"`
-	CUDAVersion  string  `json:"cuda_version,omitempty"`
+	ID                string `json:"id"`
+	Name              string `json:"name"`
+	Vendor            string `json:"vendor"`
+	Model             string `json:"model"`
+	VRAMTotal         uint64 `json:"vram_total_mb"`
+	VRAMFree          uint64 `json:"vram_free_mb"`
+	VRAMUsed          uint64 `json:"vram_used_mb"`
+	PowerDraw         uint32 `json:"power_draw_w"`
+	PowerLimit        uint32 `json:"power_limit_w"`
+	Temperature       uint8  `json:"temperature_c"`
+	Utilization       uint8  `json:"utilization_percent"`
+	DriverVersion     string `json:"driver_version"`
+	CUDAVersion       string `json:"cuda_version,omitempty"`
 	ComputeCapability string `json:"compute_capability,omitempty"`
-	PCIBusID     string  `json:"pci_bus_id"`
-	IsAvailable  bool    `json:"is_available"`
+	PCIBusID          string `json:"pci_bus_id"`
+	IsAvailable       bool   `json:"is_available"`
 }
 
 // GPUMetrics represents real-time GPU metrics
 type GPUMetrics struct {
-	ID           string    `json:"id"`
-	Timestamp    time.Time `json:"timestamp"`
-	Utilization  uint8     `json:"utilization_percent"`
-	VRAMUsed     uint64    `json:"vram_used_mb"`
-	VRAMTotal    uint64    `json:"vram_total_mb"`
-	PowerDraw    uint32    `json:"power_draw_w"`
-	Temperature  uint8     `json:"temperature_c"`
-	FanSpeed     uint8     `json:"fan_speed_percent"`
-	ClockCore    uint32    `json:"clock_core_mhz"`
-	ClockMemory  uint32    `json:"clock_memory_mhz"`
+	ID          string    `json:"id"`
+	Timestamp   time.Time `json:"timestamp"`
+	Utilization uint8     `json:"utilization_percent"`
+	VRAMUsed    uint64    `json:"vram_used_mb"`
+	VRAMTotal   uint64    `json:"vram_total_mb"`
+	PowerDraw   uint32    `json:"power_draw_w"`
+	Temperature uint8     `json:"temperature_c"`
+	FanSpeed    uint8     `json:"fan_speed_percent"`
+	ClockCore   uint32    `json:"clock_core_mhz"`
+	ClockMemory uint32    `json:"clock_memory_mhz"`
 }
 
 // Detector handles GPU detection and monitoring
