@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dante-gpu/dante-backend/api-gateway/internal/billing"
 	"github.com/dante-gpu/dante-backend/api-gateway/internal/config"
 	consul_client "github.com/dante-gpu/dante-backend/api-gateway/internal/consul"
 	"github.com/dante-gpu/dante-backend/api-gateway/internal/handlers"
@@ -63,9 +64,17 @@ func main() {
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(cfg.RequestTimeout))
 
+	// Create billing client
+	billingConfig := &billing.Config{
+		BaseURL: "http://localhost:8080", // Billing service URL
+		Timeout: 30 * time.Second,
+	}
+	billingClient := billing.NewClient(billingConfig, logger)
+
 	// I need to create instances of my handlers.
 	authHandler := handlers.NewAuthHandler(logger, cfg)
 	jobHandler := handlers.NewJobHandler(logger, cfg, nc)
+	billingHandler := handlers.NewBillingHandler(billingClient, logger)
 	// Create load balancer and proxy handler (even if Consul connection failed, to avoid nil pointers)
 	lb := loadbalancer.NewRoundRobin()
 	proxyHandler := handlers.NewProxyHandler(logger, cfg, consulClient, lb)
@@ -132,6 +141,26 @@ func main() {
 		r.Post("/jobs", jobHandler.SubmitJob)
 		r.Get("/jobs/{jobID}", jobHandler.GetJobStatus)
 		r.Delete("/jobs/{jobID}", jobHandler.CancelJob)
+
+		// Billing and wallet endpoints
+		r.Route("/billing", func(r chi.Router) {
+			// Wallet management
+			r.Post("/wallet", billingHandler.CreateWallet)
+			r.Get("/wallet/{walletID}/balance", billingHandler.GetWalletBalance)
+			r.Post("/wallet/{walletID}/deposit", billingHandler.DepositTokens)
+			r.Post("/wallet/{walletID}/withdraw", billingHandler.WithdrawTokens)
+			r.Get("/wallet/{walletID}/transactions", billingHandler.GetTransactionHistory)
+
+			// User-specific endpoints
+			r.Get("/user/{userID}/wallet", billingHandler.GetUserWallet)
+			r.Get("/user/{userID}/balance", billingHandler.GetUserBalance)
+
+			// Pricing and marketplace
+			r.Get("/pricing/rates", billingHandler.GetPricingRates)
+			r.Post("/pricing/calculate", billingHandler.CalculatePricing)
+			r.Post("/pricing/estimate", billingHandler.EstimateJobCost)
+			r.Get("/marketplace", billingHandler.GetGPUMarketplace)
+		})
 
 		// Admin routes (placeholder)
 		// r.Group(func(r chi.Router) {

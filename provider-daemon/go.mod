@@ -6,7 +6,9 @@ toolchain go1.24.0
 
 require (
 	github.com/docker/docker v20.10.24+incompatible
+	github.com/google/uuid v1.6.0
 	github.com/nats-io/nats.go v1.42.0
+	github.com/shopspring/decimal v1.4.0
 	go.uber.org/zap v1.27.0
 	gopkg.in/yaml.v3 v3.0.1
 )

@@ -55,27 +55,24 @@ func EndRentalSession(billingService *service.BillingService, logger *zap.Logger
 			return
 		}
 
-		// TODO: Implement session ending
-		// session, err := billingService.EndRentalSession(r.Context(), &req)
-		// if err != nil {
-		//     logger.Error("Failed to end rental session", zap.Error(err))
-		//     writeErrorResponse(w, http.StatusInternalServerError, "Failed to end rental session", err)
-		//     return
-		// }
-
-		response := map[string]interface{}{
-			"message":    "Session end request received",
-			"session_id": req.SessionID,
-			"reason":     req.Reason,
-			"status":     "processing",
+		session, err := billingService.EndRentalSession(r.Context(), &req)
+		if err != nil {
+			logger.Error("Failed to end rental session", zap.Error(err))
+			if billingErr, ok := err.(*models.BillingError); ok {
+				writeErrorResponse(w, getHTTPStatusFromBillingError(billingErr), billingErr.Message, err)
+			} else {
+				writeErrorResponse(w, http.StatusInternalServerError, "Failed to end rental session", err)
+			}
+			return
 		}
 
-		logger.Info("Rental session end requested",
+		logger.Info("Rental session ended successfully",
 			zap.String("session_id", req.SessionID.String()),
 			zap.String("reason", req.Reason),
+			zap.String("total_cost", session.CurrentCost.String()),
 		)
 
-		writeJSONResponse(w, http.StatusAccepted, response)
+		writeJSONResponse(w, http.StatusOK, session)
 	}
 }
 
@@ -126,27 +123,18 @@ func GetCurrentUsage(billingService *service.BillingService, logger *zap.Logger)
 			return
 		}
 
-		// TODO: Implement current usage retrieval
-		// usage, err := billingService.GetCurrentUsage(r.Context(), sessionID)
-		// if err != nil {
-		//     logger.Error("Failed to get current usage", zap.String("session_id", sessionIDStr), zap.Error(err))
-		//     writeErrorResponse(w, http.StatusInternalServerError, "Failed to get current usage", err)
-		//     return
-		// }
-
-		// Placeholder response
-		response := map[string]interface{}{
-			"session_id":            sessionID,
-			"current_cost":          "0.0",
-			"estimated_hourly_cost": "1.5",
-			"duration_minutes":      0,
-			"gpu_utilization":       0,
-			"vram_utilization":      0,
-			"power_draw":            0,
-			"status":                "active",
+		usage, err := billingService.GetCurrentUsage(r.Context(), sessionID)
+		if err != nil {
+			logger.Error("Failed to get current usage", zap.String("session_id", sessionIDStr), zap.Error(err))
+			if billingErr, ok := err.(*models.BillingError); ok {
+				writeErrorResponse(w, getHTTPStatusFromBillingError(billingErr), billingErr.Message, err)
+			} else {
+				writeErrorResponse(w, http.StatusInternalServerError, "Failed to get current usage", err)
+			}
+			return
 		}
 
-		writeJSONResponse(w, http.StatusOK, response)
+		writeJSONResponse(w, http.StatusOK, usage)
 	}
 }
 
@@ -181,53 +169,59 @@ func GetBillingHistory(billingService *service.BillingService, logger *zap.Logge
 			}
 		}
 
-		// TODO: Implement billing history retrieval
-		// history, err := billingService.GetBillingHistory(r.Context(), req)
-		// if err != nil {
-		//     logger.Error("Failed to get billing history", zap.Error(err))
-		//     writeErrorResponse(w, http.StatusInternalServerError, "Failed to get billing history", err)
-		//     return
-		// }
-
-		// Placeholder response
-		response := &models.BillingHistoryResponse{
-			Records: []models.BillingRecord{},
-			Total:   0,
-			Limit:   req.Limit,
-			Offset:  req.Offset,
+		history, err := billingService.GetBillingHistory(r.Context(), req)
+		if err != nil {
+			logger.Error("Failed to get billing history", zap.Error(err))
+			writeErrorResponse(w, http.StatusInternalServerError, "Failed to get billing history", err)
+			return
 		}
 
-		writeJSONResponse(w, http.StatusOK, response)
+		writeJSONResponse(w, http.StatusOK, history)
 	}
 }
 
 // CalculatePricing handles pricing calculation requests
 func CalculatePricing(billingService *service.BillingService, logger *zap.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// TODO: Implement pricing calculation endpoint
-		// This would use the pricing engine to calculate costs for given requirements
-
-		response := map[string]interface{}{
-			"message": "Pricing calculation endpoint not yet implemented",
-			"status":  "coming_soon",
+		var req struct {
+			GPUModel        string          `json:"gpu_model"`
+			RequestedVRAM   uint64          `json:"requested_vram_mb"`
+			TotalVRAM       uint64          `json:"total_vram_mb"`
+			EstimatedPowerW uint32          `json:"estimated_power_w"`
+			DurationHours   decimal.Decimal `json:"duration_hours"`
+			ProviderID      *uuid.UUID      `json:"provider_id,omitempty"`
+			UserID          *string         `json:"user_id,omitempty"`
 		}
 
-		writeJSONResponse(w, http.StatusNotImplemented, response)
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			logger.Error("Failed to decode pricing calculation request", zap.Error(err))
+			writeErrorResponse(w, http.StatusBadRequest, "Invalid request body", err)
+			return
+		}
+
+		// Use the pricing engine to calculate costs
+		pricing, err := billingService.CalculatePricing(r.Context(), &req)
+		if err != nil {
+			logger.Error("Failed to calculate pricing", zap.Error(err))
+			writeErrorResponse(w, http.StatusInternalServerError, "Failed to calculate pricing", err)
+			return
+		}
+
+		writeJSONResponse(w, http.StatusOK, pricing)
 	}
 }
 
 // GetPricingRates handles pricing rates requests
 func GetPricingRates(billingService *service.BillingService, logger *zap.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// TODO: Implement pricing rates endpoint
-		// This would return current pricing rates for different GPU models
-
-		response := map[string]interface{}{
-			"message": "Pricing rates endpoint not yet implemented",
-			"status":  "coming_soon",
+		rates, err := billingService.GetPricingRates(r.Context())
+		if err != nil {
+			logger.Error("Failed to get pricing rates", zap.Error(err))
+			writeErrorResponse(w, http.StatusInternalServerError, "Failed to get pricing rates", err)
+			return
 		}
 
-		writeJSONResponse(w, http.StatusNotImplemented, response)
+		writeJSONResponse(w, http.StatusOK, rates)
 	}
 }
 

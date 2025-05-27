@@ -9,8 +9,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 	"go.uber.org/zap"
-
-	"github.com/dante-gpu/dante-backend/billing-payment-service/internal/models"
 )
 
 // Engine handles dynamic pricing calculations for GPU rentals
@@ -24,20 +22,20 @@ type Engine struct {
 type Config struct {
 	// Base rates by GPU model (dGPU tokens per hour)
 	BaseRates map[string]float64 `yaml:"base_rates"`
-	
+
 	// VRAM pricing (dGPU tokens per GB per hour)
 	VRAMRatePerGB decimal.Decimal `yaml:"vram_rate_per_gb"`
-	
+
 	// Power consumption multiplier (additional cost per watt per hour)
 	PowerMultiplier decimal.Decimal `yaml:"power_multiplier"`
-	
+
 	// Platform fee percentage
 	PlatformFeePercent decimal.Decimal `yaml:"platform_fee_percent"`
-	
+
 	// Session constraints
 	MinimumSessionMinutes int `yaml:"minimum_session_minutes"`
 	MaximumSessionHours   int `yaml:"maximum_session_hours"`
-	
+
 	// Dynamic pricing factors
 	DemandMultiplierMax decimal.Decimal `yaml:"demand_multiplier_max"`
 	SupplyBonusMax      decimal.Decimal `yaml:"supply_bonus_max"`
@@ -71,31 +69,31 @@ type PricingRequest struct {
 // PricingResponse represents the calculated pricing
 type PricingResponse struct {
 	// Base pricing components
-	BaseHourlyRate    decimal.Decimal `json:"base_hourly_rate"`
-	VRAMHourlyRate    decimal.Decimal `json:"vram_hourly_rate"`
-	PowerHourlyRate   decimal.Decimal `json:"power_hourly_rate"`
-	TotalHourlyRate   decimal.Decimal `json:"total_hourly_rate"`
-	
+	BaseHourlyRate  decimal.Decimal `json:"base_hourly_rate"`
+	VRAMHourlyRate  decimal.Decimal `json:"vram_hourly_rate"`
+	PowerHourlyRate decimal.Decimal `json:"power_hourly_rate"`
+	TotalHourlyRate decimal.Decimal `json:"total_hourly_rate"`
+
 	// Session pricing
-	BaseCost          decimal.Decimal `json:"base_cost"`
-	VRAMCost          decimal.Decimal `json:"vram_cost"`
-	PowerCost         decimal.Decimal `json:"power_cost"`
-	SubtotalCost      decimal.Decimal `json:"subtotal_cost"`
-	PlatformFee       decimal.Decimal `json:"platform_fee"`
-	TotalCost         decimal.Decimal `json:"total_cost"`
-	ProviderEarnings  decimal.Decimal `json:"provider_earnings"`
-	
+	BaseCost         decimal.Decimal `json:"base_cost"`
+	VRAMCost         decimal.Decimal `json:"vram_cost"`
+	PowerCost        decimal.Decimal `json:"power_cost"`
+	SubtotalCost     decimal.Decimal `json:"subtotal_cost"`
+	PlatformFee      decimal.Decimal `json:"platform_fee"`
+	TotalCost        decimal.Decimal `json:"total_cost"`
+	ProviderEarnings decimal.Decimal `json:"provider_earnings"`
+
 	// Dynamic pricing factors
-	DemandMultiplier  decimal.Decimal `json:"demand_multiplier"`
-	SupplyBonus       decimal.Decimal `json:"supply_bonus"`
-	
+	DemandMultiplier decimal.Decimal `json:"demand_multiplier"`
+	SupplyBonus      decimal.Decimal `json:"supply_bonus"`
+
 	// VRAM allocation details
-	VRAMPercentage    decimal.Decimal `json:"vram_percentage"`
-	AllocatedVRAMGB   decimal.Decimal `json:"allocated_vram_gb"`
-	
+	VRAMPercentage  decimal.Decimal `json:"vram_percentage"`
+	AllocatedVRAMGB decimal.Decimal `json:"allocated_vram_gb"`
+
 	// Metadata
-	CalculatedAt      time.Time       `json:"calculated_at"`
-	ValidUntil        time.Time       `json:"valid_until"`
+	CalculatedAt time.Time `json:"calculated_at"`
+	ValidUntil   time.Time `json:"valid_until"`
 }
 
 // CalculatePricing calculates the pricing for a GPU rental request
@@ -186,7 +184,7 @@ func (e *Engine) CalculatePricing(ctx context.Context, req *PricingRequest) (*Pr
 // getBaseRate gets the base hourly rate for a GPU model
 func (e *Engine) getBaseRate(gpuModel string) (decimal.Decimal, error) {
 	normalizedModel := strings.ToLower(strings.TrimSpace(gpuModel))
-	
+
 	// Try exact match first
 	if rate, exists := e.baseRates[normalizedModel]; exists {
 		return rate, nil
@@ -346,4 +344,19 @@ func (e *Engine) GetSupportedGPUModels() map[string]decimal.Decimal {
 		}
 	}
 	return result
+}
+
+// GetVRAMRatePerGB returns the VRAM rate per GB per hour
+func (e *Engine) GetVRAMRatePerGB() decimal.Decimal {
+	return e.config.VRAMRatePerGB
+}
+
+// GetPowerMultiplier returns the power consumption multiplier
+func (e *Engine) GetPowerMultiplier() decimal.Decimal {
+	return e.config.PowerMultiplier
+}
+
+// GetPlatformFeePercent returns the platform fee percentage
+func (e *Engine) GetPlatformFeePercent() decimal.Decimal {
+	return e.config.PlatformFeePercent
 }

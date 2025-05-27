@@ -6,9 +6,12 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
+	"github.com/dante-gpu/dante-backend/provider-daemon/internal/billing"
 	"github.com/dante-gpu/dante-backend/provider-daemon/internal/config"
 	"github.com/dante-gpu/dante-backend/provider-daemon/internal/executor" // Added executor import
+	"github.com/dante-gpu/dante-backend/provider-daemon/internal/gpu"
 	nats_client "github.com/dante-gpu/dante-backend/provider-daemon/internal/nats"
 	"github.com/dante-gpu/dante-backend/provider-daemon/internal/tasks"
 	"go.uber.org/zap"
@@ -33,11 +36,23 @@ func main() {
 
 	logger.Info("Starting Provider Daemon", zap.String("instance_id", cfg.InstanceID))
 
+	// Initialize GPU detector
+	gpuDetector := gpu.NewDetector(logger)
+	logger.Info("GPU detector initialized")
+
+	// Initialize billing client
+	billingConfig := &billing.Config{
+		BaseURL: "http://localhost:8080", // Billing service URL
+		Timeout: 30 * time.Second,
+	}
+	billingClient := billing.NewClient(billingConfig, logger)
+	logger.Info("Billing client initialized")
+
 	// Create a new ScriptExecutor
 	scriptExec := executor.NewScriptExecutor()
 
 	// Create a new DockerExecutor
-	dockerExec, err := executor.NewDockerExecutor(logger)
+	dockerExec, err := executor.NewDockerExecutor(logger, billingClient, gpuDetector)
 	if err != nil {
 		// Log the error from NewDockerExecutor and decide if it's fatal.
 		// If Docker is essential, os.Exit(1) might be appropriate.

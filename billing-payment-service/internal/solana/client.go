@@ -3,45 +3,46 @@ package solana
 import (
 	"context"
 	"fmt"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/gagliardetto/solana-go"
 	"github.com/gagliardetto/solana-go/programs/token"
 	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/gagliardetto/solana-go/rpc/ws"
+	"github.com/mr-tron/base58"
 	"github.com/shopspring/decimal"
 	"go.uber.org/zap"
-
-	"github.com/dante-gpu/dante-backend/billing-payment-service/internal/models"
 )
 
 // Client represents a Solana blockchain client for dGPU token operations
 type Client struct {
-	rpcClient    *rpc.Client
-	wsClient     *ws.Client
-	logger       *zap.Logger
-	
+	rpcClient *rpc.Client
+	wsClient  *ws.Client
+	logger    *zap.Logger
+
 	// dGPU token configuration
-	tokenMint    solana.PublicKey
+	tokenMint      solana.PublicKey
 	platformWallet solana.PublicKey
-	privateKey   solana.PrivateKey
-	
+	privateKey     solana.PrivateKey
+
 	// Configuration
-	commitment   rpc.CommitmentType
-	timeout      time.Duration
-	maxRetries   int
+	commitment rpc.CommitmentType
+	timeout    time.Duration
+	maxRetries int
 }
 
 // Config represents Solana client configuration
 type Config struct {
-	RPCURL           string        `yaml:"rpc_url"`
-	WSURL            string        `yaml:"ws_url"`
-	TokenAddress     string        `yaml:"dgpu_token_address"`
-	PlatformWallet   string        `yaml:"platform_wallet"`
-	PrivateKeyPath   string        `yaml:"private_key_path"`
-	Commitment       string        `yaml:"commitment"`
-	Timeout          time.Duration `yaml:"timeout"`
-	MaxRetries       int           `yaml:"max_retries"`
+	RPCURL         string        `yaml:"rpc_url"`
+	WSURL          string        `yaml:"ws_url"`
+	TokenAddress   string        `yaml:"dgpu_token_address"`
+	PlatformWallet string        `yaml:"platform_wallet"`
+	PrivateKeyPath string        `yaml:"private_key_path"`
+	Commitment     string        `yaml:"commitment"`
+	Timeout        time.Duration `yaml:"timeout"`
+	MaxRetries     int           `yaml:"max_retries"`
 }
 
 // NewClient creates a new Solana client for dGPU token operations
@@ -156,7 +157,7 @@ func (c *Client) GetTokenBalance(ctx context.Context, walletAddress string) (dec
 	// Adjust for token decimals
 	decimals := decimal.NewFromInt(int64(balance.Value.Decimals))
 	divisor := decimal.NewFromInt(10).Pow(decimals)
-	
+
 	return amount.Div(divisor), nil
 }
 
@@ -375,16 +376,48 @@ func (c *Client) Close() error {
 	return nil
 }
 
-// loadPrivateKey loads a private key from file
-// In production, this should use a secure key management system
+// loadPrivateKey loads a private key from file or environment
 func loadPrivateKey(path string) (solana.PrivateKey, error) {
-	// This is a placeholder implementation
-	// In production, implement secure key loading from:
-	// - Hardware Security Module (HSM)
-	// - Key Management Service (KMS)
-	// - Encrypted key files
-	// - Environment variables (for development only)
-	
-	// For now, return an error to indicate this needs implementation
-	return solana.PrivateKey{}, fmt.Errorf("private key loading not implemented - use secure key management")
+	// First try to load from environment variable (for development)
+	if envKey := os.Getenv("SOLANA_PRIVATE_KEY"); envKey != "" {
+		keyBytes, err := base58.Decode(envKey)
+		if err != nil {
+			return solana.PrivateKey{}, fmt.Errorf("failed to decode private key from environment: %w", err)
+		}
+		if len(keyBytes) != 64 {
+			return solana.PrivateKey{}, fmt.Errorf("invalid private key length: expected 64 bytes, got %d", len(keyBytes))
+		}
+		return solana.PrivateKeyFromBytes(keyBytes)
+	}
+
+	// Try to load from file
+	if path != "" {
+		keyData, err := os.ReadFile(path)
+		if err != nil {
+			return solana.PrivateKey{}, fmt.Errorf("failed to read private key file: %w", err)
+		}
+
+		// Try to parse as base58 encoded key
+		keyStr := strings.TrimSpace(string(keyData))
+		keyBytes, err := base58.Decode(keyStr)
+		if err != nil {
+			return solana.PrivateKey{}, fmt.Errorf("failed to decode private key from file: %w", err)
+		}
+
+		if len(keyBytes) != 64 {
+			return solana.PrivateKey{}, fmt.Errorf("invalid private key length: expected 64 bytes, got %d", len(keyBytes))
+		}
+
+		return solana.PrivateKeyFromBytes(keyBytes)
+	}
+
+	// Generate a new keypair for development (NOT for production)
+	if os.Getenv("DEVELOPMENT_MODE") == "true" {
+		account := solana.NewWallet()
+		fmt.Printf("Generated new development keypair. Public key: %s\n", account.PublicKey().String())
+		fmt.Printf("Private key (base58): %s\n", base58.Encode(account.PrivateKey))
+		return account.PrivateKey, nil
+	}
+
+	return solana.PrivateKey{}, fmt.Errorf("no private key found. Set SOLANA_PRIVATE_KEY environment variable or provide key file path")
 }

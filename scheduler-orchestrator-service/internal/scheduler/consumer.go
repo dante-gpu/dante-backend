@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dante-gpu/dante-backend/scheduler-orchestrator-service/internal/billing"
 	"github.com/dante-gpu/dante-backend/scheduler-orchestrator-service/internal/clients"
 	"github.com/dante-gpu/dante-backend/scheduler-orchestrator-service/internal/config"
 	"github.com/dante-gpu/dante-backend/scheduler-orchestrator-service/internal/models"
@@ -17,20 +18,21 @@ import (
 
 // JobConsumer handles receiving and processing job messages from NATS.
 type JobConsumer struct {
-	nc           *nats.Conn
-	js           nats.JetStreamContext // JetStream context for durable subscriptions
-	logger       *zap.Logger
-	cfg          *config.Config
-	prClient     *clients.Client                              // Client for provider-registry-service
-	jobStore     store.JobStore                               // Added JobStore dependency
-	activeJobs   map[string]*models.InternalJobRepresentation // Map to track jobs being processed
-	subscription *nats.Subscription
-	shutdownChan chan struct{} // Channel to signal shutdown
+	nc            *nats.Conn
+	js            nats.JetStreamContext // JetStream context for durable subscriptions
+	logger        *zap.Logger
+	cfg           *config.Config
+	prClient      *clients.Client                              // Client for provider-registry-service
+	billingClient *billing.Client                              // Client for billing-payment-service
+	jobStore      store.JobStore                               // Added JobStore dependency
+	activeJobs    map[string]*models.InternalJobRepresentation // Map to track jobs being processed
+	subscription  *nats.Subscription
+	shutdownChan  chan struct{} // Channel to signal shutdown
 }
 
 // NewJobConsumer creates a new JobConsumer.
 // It will also try to get a JetStream context.
-func NewJobConsumer(nc *nats.Conn, cfg *config.Config, prClient *clients.Client, logger *zap.Logger, js store.JobStore) (*JobConsumer, error) {
+func NewJobConsumer(nc *nats.Conn, cfg *config.Config, prClient *clients.Client, billingClient *billing.Client, logger *zap.Logger, js store.JobStore) (*JobConsumer, error) {
 	logger.Info("Creating new JobConsumer")
 	var jetStream nats.JetStreamContext // Renamed to avoid conflict with js param
 	var err error
@@ -46,14 +48,15 @@ func NewJobConsumer(nc *nats.Conn, cfg *config.Config, prClient *clients.Client,
 	}
 
 	return &JobConsumer{
-		nc:           nc,
-		js:           jetStream, // Use renamed variable
-		logger:       logger,
-		cfg:          cfg,
-		prClient:     prClient,
-		jobStore:     js, // Assign jobStore
-		activeJobs:   make(map[string]*models.InternalJobRepresentation),
-		shutdownChan: make(chan struct{}),
+		nc:            nc,
+		js:            jetStream, // Use renamed variable
+		logger:        logger,
+		cfg:           cfg,
+		prClient:      prClient,
+		billingClient: billingClient,
+		jobStore:      js, // Assign jobStore
+		activeJobs:    make(map[string]*models.InternalJobRepresentation),
+		shutdownChan:  make(chan struct{}),
 	}, nil
 }
 
@@ -308,7 +311,69 @@ func (jc *JobConsumer) scheduleJob(internalJob *models.InternalJobRepresentation
 		return false, nil
 	}
 
-	// --- Placeholder: Task Creation & Dispatch ---
+	// Validate billing requirements and start session
+	if jc.billingClient != nil {
+		// Validate user has sufficient balance
+		gpuModel := jc.findProviderGPUType(suitableProvider)
+		vramMB := uint64(8192)         // Default 8GB, should come from provider GPU specs
+		estimatedPowerW := uint32(250) // Default 250W, should come from provider GPU specs
+
+		if len(suitableProvider.GPUs) > 0 {
+			// Use actual GPU specs if available
+			gpu := suitableProvider.GPUs[0]
+			if gpu.VRAM > 0 {
+				vramMB = gpu.VRAM
+			}
+			// Power consumption would need to be added to GPUDetail struct
+			// For now, use default values based on GPU model
+			if strings.Contains(strings.ToLower(gpu.ModelName), "4090") {
+				estimatedPowerW = 450
+			} else if strings.Contains(strings.ToLower(gpu.ModelName), "a100") {
+				estimatedPowerW = 400
+			} else if strings.Contains(strings.ToLower(gpu.ModelName), "h100") {
+				estimatedPowerW = 700
+			}
+		}
+
+		err := jc.billingClient.ValidateJobRequirements(context.Background(), job.UserID, gpuModel, vramMB, estimatedPowerW)
+		if err != nil {
+			jc.logger.Error("Job billing validation failed", zap.String("job_id", job.ID), zap.Error(err))
+			internalJob.State = models.JobStateFailed
+			internalJob.LastError = fmt.Sprintf("Billing validation failed: %v", err)
+			return false, fmt.Errorf("billing validation failed: %w", err)
+		}
+
+		// Start billing session
+		sessionReq := &billing.SessionStartRequest{
+			UserID:          job.UserID,
+			ProviderID:      suitableProvider.ID,
+			JobID:           &job.ID,
+			GPUModel:        gpuModel,
+			RequestedVRAM:   vramMB,
+			EstimatedPowerW: estimatedPowerW,
+		}
+
+		sessionResp, err := jc.billingClient.StartSession(context.Background(), sessionReq)
+		if err != nil {
+			jc.logger.Error("Failed to start billing session", zap.String("job_id", job.ID), zap.Error(err))
+			internalJob.State = models.JobStateFailed
+			internalJob.LastError = fmt.Sprintf("Failed to start billing session: %v", err)
+			return false, fmt.Errorf("billing session start failed: %w", err)
+		}
+
+		jc.logger.Info("Billing session started successfully",
+			zap.String("job_id", job.ID),
+			zap.String("session_id", sessionResp.Session.ID.String()),
+			zap.String("estimated_hourly_cost", sessionResp.EstimatedHourlyCost.String()),
+		)
+
+		// Store session ID in task parameters for later reference
+		jc.logger.Info("Session ID will be passed to task execution",
+			zap.String("session_id", sessionResp.Session.ID.String()),
+		)
+	}
+
+	// --- Task Creation & Dispatch ---
 	task := models.NewTask(&job, suitableProvider.ID.String())
 	taskJSON, err := json.Marshal(task)
 	if err != nil {
@@ -354,14 +419,12 @@ func (jc *JobConsumer) scheduleJob(internalJob *models.InternalJobRepresentation
 	return true, nil
 }
 
-// findProviderGPUType is a helper to get a representative GPU type for a provider.
-// For now, it returns the type of the first GPU if available.
-// More complex logic would be needed for heterogeneous GPU providers.
+// findProviderGPUType extracts the GPU model name from a provider
 func (jc *JobConsumer) findProviderGPUType(provider *clients.Provider) string {
-	if provider != nil && len(provider.GPUs) > 0 {
-		return provider.GPUs[0].ModelName // Assuming first GPU is representative
+	if len(provider.GPUs) > 0 {
+		return provider.GPUs[0].ModelName
 	}
-	return ""
+	return "unknown-gpu"
 }
 
 // Stop gracefully shuts down the JobConsumer.

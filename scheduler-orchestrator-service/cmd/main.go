@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/dante-gpu/dante-backend/scheduler-orchestrator-service/internal/billing"
 	"github.com/dante-gpu/dante-backend/scheduler-orchestrator-service/internal/clients"
 	"github.com/dante-gpu/dante-backend/scheduler-orchestrator-service/internal/config"
 	consul_client "github.com/dante-gpu/dante-backend/scheduler-orchestrator-service/internal/consul"
@@ -102,10 +103,18 @@ func main() {
 	prClient := clients.NewClient(cfg, consulClient, logger)
 	logger.Info("Provider Registry Service client initialized")
 
+	// --- Billing Client ---
+	billingConfig := &billing.Config{
+		BaseURL: "http://localhost:8080", // Billing service URL
+		Timeout: 30 * time.Second,
+	}
+	billingClient := billing.NewClient(billingConfig, logger)
+	logger.Info("Billing Service client initialized")
+
 	// --- Job Consumer ---
 	var jobConsumer *scheduler.JobConsumer
 	if nc != nil { // Only start consumer if NATS connection is available
-		jc, consumerErr := scheduler.NewJobConsumer(nc, cfg, prClient, logger, jobStore)
+		jc, consumerErr := scheduler.NewJobConsumer(nc, cfg, prClient, billingClient, logger, jobStore)
 		if consumerErr != nil {
 			logger.Error("Failed to create JobConsumer. Job processing will be unavailable.", zap.Error(consumerErr))
 		} else {

@@ -26,14 +26,14 @@ type BillingService struct {
 
 // Config represents billing service configuration
 type Config struct {
-	MinimumBalance          decimal.Decimal `yaml:"minimum_balance"`
-	LowBalanceThreshold     decimal.Decimal `yaml:"low_balance_threshold"`
-	BillingInterval         time.Duration   `yaml:"billing_interval"`
-	InsufficientFundsGrace  time.Duration   `yaml:"insufficient_funds_grace_period"`
-	MaxTransactionAmount    decimal.Decimal `yaml:"max_transaction_amount"`
-	DailyWithdrawalLimit    decimal.Decimal `yaml:"daily_withdrawal_limit"`
-	MinimumPayoutAmount     decimal.Decimal `yaml:"minimum_payout_amount"`
-	PayoutFeePercent        decimal.Decimal `yaml:"payout_fee_percent"`
+	MinimumBalance         decimal.Decimal `yaml:"minimum_balance"`
+	LowBalanceThreshold    decimal.Decimal `yaml:"low_balance_threshold"`
+	BillingInterval        time.Duration   `yaml:"billing_interval"`
+	InsufficientFundsGrace time.Duration   `yaml:"insufficient_funds_grace_period"`
+	MaxTransactionAmount   decimal.Decimal `yaml:"max_transaction_amount"`
+	DailyWithdrawalLimit   decimal.Decimal `yaml:"daily_withdrawal_limit"`
+	MinimumPayoutAmount    decimal.Decimal `yaml:"minimum_payout_amount"`
+	PayoutFeePercent       decimal.Decimal `yaml:"payout_fee_percent"`
 }
 
 // NewBillingService creates a new billing service
@@ -192,34 +192,34 @@ func (s *BillingService) StartRentalSession(ctx context.Context, req *models.Ses
 
 	// Create rental session
 	session := &models.RentalSession{
-		ID:                uuid.New(),
-		UserID:            req.UserID,
-		ProviderID:        req.ProviderID,
-		JobID:             req.JobID,
-		Status:            models.SessionStatusActive,
-		GPUModel:          req.GPUModel,
-		AllocatedVRAM:     req.RequestedVRAM,
-		TotalVRAM:         req.RequestedVRAM, // This should come from provider registry
-		VRAMPercentage:    decimal.NewFromInt(100), // Assuming full allocation for now
-		HourlyRate:        pricing.BaseHourlyRate,
-		VRAMRate:          pricing.VRAMHourlyRate,
-		PowerRate:         pricing.PowerHourlyRate,
-		PlatformFeeRate:   decimal.NewFromFloat(5.0), // From config
-		EstimatedPowerW:   req.EstimatedPowerW,
-		StartedAt:         time.Now().UTC(),
-		LastBilledAt:      time.Now().UTC(),
-		TotalCost:         decimal.Zero,
-		PlatformFee:       decimal.Zero,
-		ProviderEarnings:  decimal.Zero,
-		CreatedAt:         time.Now().UTC(),
-		UpdatedAt:         time.Now().UTC(),
+		ID:               uuid.New(),
+		UserID:           req.UserID,
+		ProviderID:       req.ProviderID,
+		JobID:            req.JobID,
+		Status:           models.SessionStatusActive,
+		GPUModel:         req.GPUModel,
+		AllocatedVRAM:    req.RequestedVRAM,
+		TotalVRAM:        req.RequestedVRAM,       // This should come from provider registry
+		VRAMPercentage:   decimal.NewFromInt(100), // Assuming full allocation for now
+		HourlyRate:       pricing.BaseHourlyRate,
+		VRAMRate:         pricing.VRAMHourlyRate,
+		PowerRate:        pricing.PowerHourlyRate,
+		PlatformFeeRate:  decimal.NewFromFloat(5.0), // From config
+		EstimatedPowerW:  req.EstimatedPowerW,
+		StartedAt:        time.Now().UTC(),
+		LastBilledAt:     time.Now().UTC(),
+		TotalCost:        decimal.Zero,
+		PlatformFee:      decimal.Zero,
+		ProviderEarnings: decimal.Zero,
+		CreatedAt:        time.Now().UTC(),
+		UpdatedAt:        time.Now().UTC(),
 	}
 
-	// Save session to database (this would need to be implemented in store)
-	// err = s.store.CreateRentalSession(ctx, session)
-	// if err != nil {
-	//     return nil, fmt.Errorf("failed to create rental session: %w", err)
-	// }
+	// Save session to database
+	err = s.store.CreateRentalSession(ctx, session)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create rental session: %w", err)
+	}
 
 	// Create initial transaction record
 	txnReq := &models.TransactionCreateRequest{
@@ -240,11 +240,11 @@ func (s *BillingService) StartRentalSession(ctx context.Context, req *models.Ses
 	estimatedRuntime := userWallet.AvailableBalance().Div(pricing.TotalHourlyCost)
 
 	response := &models.SessionResponse{
-		Session:              *session,
-		CurrentCost:          decimal.Zero,
-		EstimatedHourlyCost:  pricing.TotalHourlyCost,
-		RemainingBalance:     userWallet.AvailableBalance(),
-		EstimatedRuntime:     estimatedRuntime,
+		Session:             *session,
+		CurrentCost:         decimal.Zero,
+		EstimatedHourlyCost: pricing.TotalHourlyCost,
+		RemainingBalance:    userWallet.AvailableBalance(),
+		EstimatedRuntime:    estimatedRuntime,
 	}
 
 	s.logger.Info("Rental session started successfully",
@@ -263,37 +263,407 @@ func (s *BillingService) ProcessUsageUpdate(ctx context.Context, req *models.Usa
 		zap.Uint32("power_draw", req.PowerDraw),
 	)
 
-	// Get session (this would need to be implemented in store)
-	// session, err := s.store.GetRentalSession(ctx, req.SessionID)
-	// if err != nil {
-	//     return err
-	// }
+	// Get session
+	session, err := s.store.GetRentalSession(ctx, req.SessionID)
+	if err != nil {
+		return err
+	}
+
+	// Calculate period cost based on current session rates
+	periodHours := decimal.NewFromInt(1).Div(decimal.NewFromInt(60)) // 1 minute = 1/60 hour
+
+	// Base cost for this period
+	baseCost := session.HourlyRate.Mul(periodHours)
+
+	// VRAM cost for this period
+	vramGB := decimal.NewFromInt(int64(session.AllocatedVRAM)).Div(decimal.NewFromInt(1024))
+	vramCost := session.VRAMRate.Mul(vramGB).Mul(periodHours)
+
+	// Power cost for this period (use actual power if available, otherwise estimated)
+	powerW := decimal.NewFromInt(int64(req.PowerDraw))
+	powerCost := session.PowerRate.Mul(powerW).Div(decimal.NewFromInt(1000)).Mul(periodHours) // Convert W to kW
+
+	periodCost := baseCost.Add(vramCost).Add(powerCost)
 
 	// Create usage record
 	usageRecord := &models.UsageRecord{
-		ID:                   uuid.New(),
-		SessionID:            req.SessionID,
-		RecordedAt:           req.Timestamp,
-		GPUUtilization:       req.GPUUtilization,
-		VRAMUtilization:      req.VRAMUtilization,
-		PowerDraw:            req.PowerDraw,
-		Temperature:          req.Temperature,
-		PeriodMinutes:        1, // Assuming 1-minute intervals
-		PeriodCost:           decimal.Zero, // Will be calculated
-		CreatedAt:            time.Now().UTC(),
+		ID:              uuid.New(),
+		SessionID:       req.SessionID,
+		RecordedAt:      req.Timestamp,
+		GPUUtilization:  req.GPUUtilization,
+		VRAMUtilization: req.VRAMUtilization,
+		PowerDraw:       req.PowerDraw,
+		Temperature:     req.Temperature,
+		PeriodMinutes:   1, // 1-minute intervals
+		PeriodCost:      periodCost,
+		CreatedAt:       time.Now().UTC(),
 	}
 
-	// Save usage record (this would need to be implemented in store)
-	// err = s.store.CreateUsageRecord(ctx, usageRecord)
-	// if err != nil {
-	//     return fmt.Errorf("failed to create usage record: %w", err)
-	// }
+	// Save usage record
+	err = s.store.CreateUsageRecord(ctx, usageRecord)
+	if err != nil {
+		return fmt.Errorf("failed to create usage record: %w", err)
+	}
+
+	// Update session with actual power consumption and total cost
+	if session.ActualPowerW == nil || *session.ActualPowerW != req.PowerDraw {
+		actualPower := req.PowerDraw
+		session.ActualPowerW = &actualPower
+		session.TotalCost = session.TotalCost.Add(periodCost)
+		session.UpdatedAt = time.Now().UTC()
+
+		err = s.store.UpdateRentalSession(ctx, session)
+		if err != nil {
+			s.logger.Warn("Failed to update session with actual power", zap.Error(err))
+		}
+	}
 
 	s.logger.Debug("Usage update processed successfully")
 	return nil
 }
 
 // Helper methods
+
+// EndRentalSession ends a rental session and processes final billing
+func (s *BillingService) EndRentalSession(ctx context.Context, req *models.SessionEndRequest) (*models.SessionResponse, error) {
+	s.logger.Info("Ending rental session", zap.String("session_id", req.SessionID.String()))
+
+	// Get session
+	session, err := s.store.GetRentalSession(ctx, req.SessionID)
+	if err != nil {
+		return nil, err
+	}
+
+	if session.Status != models.SessionStatusActive {
+		return nil, models.NewBillingError(models.ErrCodeSessionNotActive, "Session is not active", models.ErrSessionNotActive)
+	}
+
+	// Calculate final costs
+	now := time.Now().UTC()
+	session.EndedAt = &now
+	session.Status = models.SessionStatusCompleted
+
+	// Calculate total session cost
+	totalCost := session.CalculateCurrentCost()
+	platformFee := totalCost.Mul(session.PlatformFeeRate).Div(decimal.NewFromInt(100))
+	providerEarnings := totalCost.Sub(platformFee)
+
+	session.TotalCost = totalCost
+	session.PlatformFee = platformFee
+	session.ProviderEarnings = providerEarnings
+	session.UpdatedAt = now
+
+	// Update session in database
+	err = s.store.UpdateRentalSession(ctx, session)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update session: %w", err)
+	}
+
+	// Get user wallet to process final payment
+	userWallet, err := s.store.GetWalletByUserID(ctx, session.UserID, models.WalletTypeUser)
+	if err != nil {
+		return nil, err
+	}
+
+	// Unlock any remaining locked funds and deduct actual cost
+	userWallet.UnlockFunds(userWallet.LockedBalance)
+	err = userWallet.DeductFunds(totalCost)
+	if err != nil {
+		s.logger.Error("Failed to deduct final session cost", zap.Error(err))
+		return nil, err
+	}
+
+	// Update wallet balance
+	err = s.store.UpdateWalletBalance(ctx, userWallet.ID, userWallet.Balance, userWallet.LockedBalance)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update wallet balance: %w", err)
+	}
+
+	// Create final transaction
+	txnReq := &models.TransactionCreateRequest{
+		FromWalletID: &userWallet.ID,
+		Type:         models.TransactionTypeSessionEnd,
+		Amount:       totalCost,
+		Description:  fmt.Sprintf("Session end - final payment for %s", session.GPUModel),
+		SessionID:    &session.ID,
+	}
+
+	_, err = s.store.CreateTransaction(ctx, txnReq)
+	if err != nil {
+		s.logger.Error("Failed to create final transaction", zap.Error(err))
+	}
+
+	response := &models.SessionResponse{
+		Session:             *session,
+		CurrentCost:         totalCost,
+		EstimatedHourlyCost: decimal.Zero,
+		RemainingBalance:    userWallet.AvailableBalance(),
+		EstimatedRuntime:    decimal.Zero,
+	}
+
+	s.logger.Info("Rental session ended successfully",
+		zap.String("session_id", session.ID.String()),
+		zap.String("total_cost", totalCost.String()),
+		zap.String("duration", session.Duration().String()),
+	)
+
+	return response, nil
+}
+
+// GetCurrentUsage gets current usage and cost for an active session
+func (s *BillingService) GetCurrentUsage(ctx context.Context, sessionID uuid.UUID) (*models.SessionResponse, error) {
+	session, err := s.store.GetRentalSession(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+
+	currentCost := session.CalculateCurrentCost()
+
+	// Get user wallet for remaining balance
+	userWallet, err := s.store.GetWalletByUserID(ctx, session.UserID, models.WalletTypeUser)
+	if err != nil {
+		return nil, err
+	}
+
+	// Calculate estimated runtime based on current hourly rate
+	hourlyRate := session.HourlyRate
+	if session.VRAMRate.GreaterThan(decimal.Zero) {
+		vramGB := decimal.NewFromInt(int64(session.AllocatedVRAM)).Div(decimal.NewFromInt(1024))
+		hourlyRate = hourlyRate.Add(session.VRAMRate.Mul(vramGB))
+	}
+	if session.PowerRate.GreaterThan(decimal.Zero) && session.ActualPowerW != nil {
+		powerKW := decimal.NewFromInt(int64(*session.ActualPowerW)).Div(decimal.NewFromInt(1000))
+		hourlyRate = hourlyRate.Add(session.PowerRate.Mul(powerKW))
+	}
+
+	estimatedRuntime := decimal.Zero
+	if hourlyRate.GreaterThan(decimal.Zero) {
+		estimatedRuntime = userWallet.AvailableBalance().Div(hourlyRate)
+	}
+
+	return &models.SessionResponse{
+		Session:             *session,
+		CurrentCost:         currentCost,
+		EstimatedHourlyCost: hourlyRate,
+		RemainingBalance:    userWallet.AvailableBalance(),
+		EstimatedRuntime:    estimatedRuntime,
+	}, nil
+}
+
+// GetBillingHistory retrieves billing history for a user or provider
+func (s *BillingService) GetBillingHistory(ctx context.Context, req *models.BillingHistoryRequest) (*models.BillingHistoryResponse, error) {
+	return s.store.GetBillingHistory(ctx, req)
+}
+
+// GetProviderEarnings retrieves earnings information for a provider
+func (s *BillingService) GetProviderEarnings(ctx context.Context, req *models.ProviderEarningsRequest) (*models.ProviderEarningsResponse, error) {
+	return s.store.GetProviderEarnings(ctx, req)
+}
+
+// ProcessDeposit processes a dGPU token deposit
+func (s *BillingService) ProcessDeposit(ctx context.Context, req *models.DepositRequest) (*models.Transaction, error) {
+	s.logger.Info("Processing deposit",
+		zap.String("wallet_id", req.WalletID.String()),
+		zap.String("amount", req.Amount.String()),
+		zap.String("signature", req.SolanaSignature),
+	)
+
+	// Verify the Solana transaction
+	err := s.solanaClient.ConfirmTransaction(ctx, req.SolanaSignature)
+	if err != nil {
+		return nil, models.NewSolanaError("confirm_deposit", err)
+	}
+
+	// Get wallet
+	wallet, err := s.store.GetWallet(ctx, req.WalletID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Add funds to wallet
+	wallet.AddFunds(req.Amount)
+
+	// Update wallet balance
+	err = s.store.UpdateWalletBalance(ctx, wallet.ID, wallet.Balance, wallet.LockedBalance)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update wallet balance: %w", err)
+	}
+
+	// Create transaction record
+	txnReq := &models.TransactionCreateRequest{
+		ToWalletID:  &wallet.ID,
+		Type:        models.TransactionTypeDeposit,
+		Amount:      req.Amount,
+		Description: "dGPU token deposit",
+		Metadata: map[string]interface{}{
+			"solana_signature": req.SolanaSignature,
+		},
+	}
+
+	transaction, err := s.store.CreateTransaction(ctx, txnReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create transaction: %w", err)
+	}
+
+	// Update transaction with confirmed status
+	err = s.store.UpdateTransactionStatus(ctx, transaction.ID, models.TransactionStatusConfirmed, &req.SolanaSignature)
+	if err != nil {
+		s.logger.Warn("Failed to update transaction status", zap.Error(err))
+	}
+
+	s.logger.Info("Deposit processed successfully",
+		zap.String("wallet_id", wallet.ID.String()),
+		zap.String("amount", req.Amount.String()),
+	)
+
+	return transaction, nil
+}
+
+// ProcessWithdrawal processes a dGPU token withdrawal
+func (s *BillingService) ProcessWithdrawal(ctx context.Context, req *models.WithdrawalRequest) (*models.Transaction, error) {
+	s.logger.Info("Processing withdrawal",
+		zap.String("wallet_id", req.WalletID.String()),
+		zap.String("amount", req.Amount.String()),
+		zap.String("to_address", req.ToAddress),
+	)
+
+	// Get wallet
+	wallet, err := s.store.GetWallet(ctx, req.WalletID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check if wallet has sufficient funds
+	if !wallet.CanSpend(req.Amount) {
+		return nil, models.NewInsufficientFundsError(req.Amount.String(), wallet.AvailableBalance().String())
+	}
+
+	// Check daily withdrawal limit
+	if req.Amount.GreaterThan(s.config.DailyWithdrawalLimit) {
+		return nil, models.NewValidationError("amount", "exceeds daily withdrawal limit")
+	}
+
+	// Create transaction record first
+	txnReq := &models.TransactionCreateRequest{
+		FromWalletID: &wallet.ID,
+		Type:         models.TransactionTypeWithdrawal,
+		Amount:       req.Amount,
+		Description:  fmt.Sprintf("dGPU token withdrawal to %s", req.ToAddress),
+		Metadata: map[string]interface{}{
+			"to_address": req.ToAddress,
+		},
+	}
+
+	transaction, err := s.store.CreateTransaction(ctx, txnReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create transaction: %w", err)
+	}
+
+	// Execute Solana transfer
+	signature, err := s.solanaClient.TransferTokens(ctx, wallet.SolanaAddress, req.ToAddress, req.Amount)
+	if err != nil {
+		// Update transaction as failed
+		s.store.UpdateTransactionStatus(ctx, transaction.ID, models.TransactionStatusFailed, nil)
+		return nil, models.NewSolanaError("transfer_tokens", err)
+	}
+
+	// Deduct funds from wallet
+	err = wallet.DeductFunds(req.Amount)
+	if err != nil {
+		s.logger.Error("Failed to deduct funds after successful transfer", zap.Error(err))
+		return nil, err
+	}
+
+	// Update wallet balance
+	err = s.store.UpdateWalletBalance(ctx, wallet.ID, wallet.Balance, wallet.LockedBalance)
+	if err != nil {
+		s.logger.Error("Failed to update wallet balance after withdrawal", zap.Error(err))
+		return nil, err
+	}
+
+	// Update transaction with confirmed status and signature
+	err = s.store.UpdateTransactionStatus(ctx, transaction.ID, models.TransactionStatusConfirmed, &signature)
+	if err != nil {
+		s.logger.Warn("Failed to update transaction status", zap.Error(err))
+	}
+
+	s.logger.Info("Withdrawal processed successfully",
+		zap.String("wallet_id", wallet.ID.String()),
+		zap.String("amount", req.Amount.String()),
+		zap.String("signature", signature),
+	)
+
+	return transaction, nil
+}
+
+// GetTransactionHistory retrieves transaction history for a wallet
+func (s *BillingService) GetTransactionHistory(ctx context.Context, req *models.TransactionHistoryRequest) (*models.TransactionHistoryResponse, error) {
+	// This would need to be implemented in the store
+	// For now, return empty response
+	return &models.TransactionHistoryResponse{
+		Transactions: []models.Transaction{},
+		Total:        0,
+		Limit:        req.Limit,
+		Offset:       req.Offset,
+	}, nil
+}
+
+// CalculatePricing calculates pricing for GPU rental requirements
+func (s *BillingService) CalculatePricing(ctx context.Context, req interface{}) (*pricing.PricingResponse, error) {
+	// Convert the interface{} to proper pricing request
+	pricingReq := &pricing.PricingRequest{}
+
+	// This is a simplified conversion - in production, use proper type assertion or JSON marshaling
+	if reqMap, ok := req.(map[string]interface{}); ok {
+		if gpuModel, ok := reqMap["gpu_model"].(string); ok {
+			pricingReq.GPUModel = gpuModel
+		}
+		if requestedVRAM, ok := reqMap["requested_vram_mb"].(uint64); ok {
+			pricingReq.RequestedVRAM = requestedVRAM
+		}
+		if totalVRAM, ok := reqMap["total_vram_mb"].(uint64); ok {
+			pricingReq.TotalVRAM = totalVRAM
+		}
+		if estimatedPowerW, ok := reqMap["estimated_power_w"].(uint32); ok {
+			pricingReq.EstimatedPowerW = estimatedPowerW
+		}
+		if durationHours, ok := reqMap["duration_hours"].(decimal.Decimal); ok {
+			pricingReq.DurationHours = durationHours
+		}
+	}
+
+	// Set defaults if not provided
+	if pricingReq.TotalVRAM == 0 {
+		pricingReq.TotalVRAM = pricingReq.RequestedVRAM
+	}
+	if pricingReq.DurationHours.IsZero() {
+		pricingReq.DurationHours = decimal.NewFromInt(1) // Default to 1 hour
+	}
+
+	// Validate the request
+	if err := s.pricingEngine.ValidatePricingRequest(pricingReq); err != nil {
+		return nil, fmt.Errorf("invalid pricing request: %w", err)
+	}
+
+	// Calculate pricing
+	return s.pricingEngine.CalculatePricing(ctx, pricingReq)
+}
+
+// GetPricingRates gets current pricing rates for all supported GPU models
+func (s *BillingService) GetPricingRates(ctx context.Context) (map[string]interface{}, error) {
+	supportedGPUs := s.pricingEngine.GetSupportedGPUModels()
+
+	response := map[string]interface{}{
+		"base_rates":           supportedGPUs,
+		"vram_rate_per_gb":     s.pricingEngine.GetVRAMRatePerGB(),
+		"power_multiplier":     s.pricingEngine.GetPowerMultiplier(),
+		"platform_fee_percent": s.pricingEngine.GetPlatformFeePercent(),
+		"currency":             "dGPU",
+		"last_updated":         time.Now().UTC(),
+	}
+
+	return response, nil
+}
 
 // isValidSolanaAddress validates a Solana address format
 func (s *BillingService) isValidSolanaAddress(address string) bool {

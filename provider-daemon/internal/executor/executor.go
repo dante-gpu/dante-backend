@@ -12,11 +12,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dante-gpu/dante-backend/provider-daemon/internal/billing"
+	"github.com/dante-gpu/dante-backend/provider-daemon/internal/gpu"
 	"github.com/dante-gpu/dante-backend/provider-daemon/internal/models"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 
@@ -139,13 +142,15 @@ func (se *ScriptExecutor) Execute(ctx context.Context, task *models.Task, worksp
 
 // DockerExecutor implements the Executor interface for running tasks in Docker containers.
 type DockerExecutor struct {
-	cli    *client.Client
-	logger *zap.Logger
+	cli           *client.Client
+	logger        *zap.Logger
+	billingClient *billing.Client
+	gpuDetector   *gpu.Detector
 }
 
 // NewDockerExecutor creates a new DockerExecutor.
 // It initializes a Docker client from environment variables.
-func NewDockerExecutor(logger *zap.Logger) (*DockerExecutor, error) {
+func NewDockerExecutor(logger *zap.Logger, billingClient *billing.Client, gpuDetector *gpu.Detector) (*DockerExecutor, error) {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		logger.Error("Failed to create Docker client", zap.Error(err))
@@ -157,7 +162,12 @@ func NewDockerExecutor(logger *zap.Logger) (*DockerExecutor, error) {
 		return nil, fmt.Errorf("failed to ping Docker daemon: %w", err)
 	}
 	logger.Info("Docker client initialized and connected to Docker daemon")
-	return &DockerExecutor{cli: cli, logger: logger}, nil
+	return &DockerExecutor{
+		cli:           cli,
+		logger:        logger,
+		billingClient: billingClient,
+		gpuDetector:   gpuDetector,
+	}, nil
 }
 
 // Execute runs a task in a Docker container based on task.JobParams.
@@ -350,6 +360,22 @@ func (de *DockerExecutor) Execute(ctx context.Context, task *models.Task, worksp
 		return ExecutionResult{Error: fmt.Errorf("failed to start container %s: %w", resp.ID, err), ExitCode: -1}
 	}
 	jobLogger.Info("Container started", zap.String("id", resp.ID))
+
+	// Start billing monitoring if session ID is provided
+	var billingCtx context.Context
+	var billingCancel context.CancelFunc
+	if sessionIDStr, ok := task.JobParams["session_id"].(string); ok && sessionIDStr != "" {
+		if sessionID, err := uuid.Parse(sessionIDStr); err == nil && de.billingClient != nil {
+			billingCtx, billingCancel = context.WithCancel(ctx)
+			go func() {
+				defer billingCancel()
+				if err := de.billingClient.Monitor(billingCtx, sessionID, "gpu-0", 1*time.Minute); err != nil {
+					jobLogger.Error("Billing monitoring failed", zap.Error(err))
+				}
+			}()
+			jobLogger.Info("Started billing monitoring", zap.String("session_id", sessionID.String()))
+		}
+	}
 
 	// --- Wait for Container Completion (with timeout) ---
 	var waitCtx context.Context

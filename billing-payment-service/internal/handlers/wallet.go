@@ -84,22 +84,24 @@ func DepositTokens(billingService *service.BillingService, logger *zap.Logger) h
 
 		req.WalletID = walletID
 
-		// TODO: Implement deposit processing
-		// transaction, err := billingService.ProcessDeposit(r.Context(), &req)
-		// if err != nil {
-		//     logger.Error("Failed to process deposit", zap.Error(err))
-		//     writeErrorResponse(w, http.StatusInternalServerError, "Failed to process deposit", err)
-		//     return
-		// }
-
-		response := map[string]interface{}{
-			"message":   "Deposit request received",
-			"wallet_id": walletID,
-			"amount":    req.Amount,
-			"status":    "pending",
+		transaction, err := billingService.ProcessDeposit(r.Context(), &req)
+		if err != nil {
+			logger.Error("Failed to process deposit", zap.Error(err))
+			if billingErr, ok := err.(*models.BillingError); ok {
+				writeErrorResponse(w, getHTTPStatusFromBillingError(billingErr), billingErr.Message, err)
+			} else {
+				writeErrorResponse(w, http.StatusInternalServerError, "Failed to process deposit", err)
+			}
+			return
 		}
 
-		writeJSONResponse(w, http.StatusAccepted, response)
+		logger.Info("Deposit processed successfully",
+			zap.String("wallet_id", walletID.String()),
+			zap.String("amount", req.Amount.String()),
+			zap.String("transaction_id", transaction.ID.String()),
+		)
+
+		writeJSONResponse(w, http.StatusOK, transaction)
 	}
 }
 
@@ -123,23 +125,25 @@ func WithdrawTokens(billingService *service.BillingService, logger *zap.Logger) 
 
 		req.WalletID = walletID
 
-		// TODO: Implement withdrawal processing
-		// transaction, err := billingService.ProcessWithdrawal(r.Context(), &req)
-		// if err != nil {
-		//     logger.Error("Failed to process withdrawal", zap.Error(err))
-		//     writeErrorResponse(w, http.StatusInternalServerError, "Failed to process withdrawal", err)
-		//     return
-		// }
-
-		response := map[string]interface{}{
-			"message":    "Withdrawal request received",
-			"wallet_id":  walletID,
-			"amount":     req.Amount,
-			"to_address": req.ToAddress,
-			"status":     "pending",
+		transaction, err := billingService.ProcessWithdrawal(r.Context(), &req)
+		if err != nil {
+			logger.Error("Failed to process withdrawal", zap.Error(err))
+			if billingErr, ok := err.(*models.BillingError); ok {
+				writeErrorResponse(w, getHTTPStatusFromBillingError(billingErr), billingErr.Message, err)
+			} else {
+				writeErrorResponse(w, http.StatusInternalServerError, "Failed to process withdrawal", err)
+			}
+			return
 		}
 
-		writeJSONResponse(w, http.StatusAccepted, response)
+		logger.Info("Withdrawal processed successfully",
+			zap.String("wallet_id", walletID.String()),
+			zap.String("amount", req.Amount.String()),
+			zap.String("to_address", req.ToAddress),
+			zap.String("transaction_id", transaction.ID.String()),
+		)
+
+		writeJSONResponse(w, http.StatusOK, transaction)
 	}
 }
 
@@ -174,23 +178,14 @@ func GetTransactionHistory(billingService *service.BillingService, logger *zap.L
 			}
 		}
 
-		// TODO: Implement transaction history retrieval
-		// history, err := billingService.GetTransactionHistory(r.Context(), req)
-		// if err != nil {
-		//     logger.Error("Failed to get transaction history", zap.Error(err))
-		//     writeErrorResponse(w, http.StatusInternalServerError, "Failed to get transaction history", err)
-		//     return
-		// }
-
-		// Placeholder response
-		response := &models.TransactionHistoryResponse{
-			Transactions: []models.Transaction{},
-			Total:        0,
-			Limit:        req.Limit,
-			Offset:       req.Offset,
+		history, err := billingService.GetTransactionHistory(r.Context(), req)
+		if err != nil {
+			logger.Error("Failed to get transaction history", zap.Error(err))
+			writeErrorResponse(w, http.StatusInternalServerError, "Failed to get transaction history", err)
+			return
 		}
 
-		writeJSONResponse(w, http.StatusOK, response)
+		writeJSONResponse(w, http.StatusOK, history)
 	}
 }
 
