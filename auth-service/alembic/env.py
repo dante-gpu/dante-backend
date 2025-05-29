@@ -84,7 +84,7 @@ def run_migrations_online() -> None:
     # This configuration section is needed for online mode.
     # It uses the 'sqlalchemy.url' from alembic.ini by default.
     # I will modify it to use the URL from my settings.
-    configuration = config.get_section(config.config_main_section)
+    configuration = config.get_section(config.config_ini_section)
     configuration["sqlalchemy.url"] = get_url()
 
     connectable = engine_from_config(
@@ -112,4 +112,4 @@ def run_migrations_online() -> None:
 if context.is_offline_mode():
     run_migrations_offline()
 else:
-    run_migrations_online() 
+    run_migrations_online()

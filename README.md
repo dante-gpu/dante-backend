@@ -314,6 +314,249 @@ cd auth-service && alembic upgrade head
 - Configure network firewalls
 - Regular security audits and updates
 
+## How the Platform Works
+
+### User Journey Overview
+
+The Dante GPU Rental Platform operates as a decentralized marketplace connecting GPU providers with users who need computational resources for AI training and other GPU-intensive tasks.
+
+#### For GPU Providers
+
+1. **Registration and Setup**
+   ```bash
+   # Provider installs the daemon on their machine
+   ./provider-daemon --register
+   ```
+   - Provider registers their GPU hardware (model, VRAM, location)
+   - Sets custom pricing rates or uses platform defaults
+   - Configures availability schedule and resource limits
+
+2. **Resource Monitoring**
+   - Provider daemon continuously monitors GPU status and availability
+   - Reports real-time metrics to the platform (temperature, utilization, power)
+   - Automatically updates availability based on local usage
+
+3. **Job Execution**
+   - Receives job assignments through NATS message queue
+   - Executes tasks in isolated Docker containers or script environments
+   - Monitors resource usage and reports billing data in real-time
+
+4. **Earnings and Payouts**
+   - Earns dGPU tokens based on actual usage time and resource allocation
+   - Platform automatically calculates earnings (base rate + VRAM + power consumption)
+   - Receives automatic payouts to Solana wallet after job completion
+
+#### For GPU Renters
+
+1. **Account Setup and Wallet**
+   ```bash
+   # User creates account and dGPU wallet
+   curl -X POST /api/v1/auth/register -d '{"email":"user@example.com","password":"secure123"}'
+   curl -X POST /api/v1/billing/wallet -H "Authorization: Bearer $JWT_TOKEN"
+   ```
+
+2. **Browse GPU Marketplace**
+   ```bash
+   # Browse available GPUs with filtering
+   curl "/api/v1/billing/marketplace?gpu_model=RTX4090&min_vram=16&location=US"
+   ```
+   - Filter by GPU model, VRAM, location, and price range
+   - View real-time availability and current pricing
+   - Check provider ratings and performance history
+
+3. **Cost Estimation**
+   ```bash
+   # Estimate job cost before submission
+   curl -X POST /api/v1/billing/pricing/estimate -d '{
+     "gpu_model": "RTX4090",
+     "vram_gb": 12,
+     "estimated_hours": 2.5,
+     "power_watts": 350
+   }'
+   ```
+
+4. **Job Submission and Payment**
+   ```bash
+   # Submit GPU rental job
+   curl -X POST /api/v1/jobs -d '{
+     "name": "AI Model Training",
+     "docker_image": "pytorch/pytorch:latest",
+     "script": "python train.py",
+     "gpu_requirements": {
+       "model": "RTX4090",
+       "vram_gb": 12,
+       "min_compute_capability": 8.6
+     },
+     "max_duration_hours": 4,
+     "max_cost_dgpu": 2.5
+   }'
+   ```
+
+5. **Real-time Monitoring**
+   - Monitor job progress and resource usage through API
+   - Receive real-time billing updates
+   - Get notifications for job completion or issues
+
+### Platform Workflow
+
+#### Job Lifecycle
+
+1. **Job Submission**
+   ```
+   User → API Gateway → Scheduler Service → Job Queue (NATS)
+   ```
+
+2. **Provider Matching**
+   ```
+   Scheduler → Provider Registry → Billing Validation → Provider Selection
+   ```
+
+3. **Job Execution**
+   ```
+   Scheduler → Provider Daemon → Docker/Script Execution → Real-time Monitoring
+   ```
+
+4. **Billing and Completion**
+   ```
+   Provider Daemon → Billing Service → Solana Blockchain → Payment Processing
+   ```
+
+#### Real-time Billing Process
+
+1. **Session Initialization**
+   - Billing service creates a rental session when job starts
+   - Validates user has sufficient dGPU token balance
+   - Sets up real-time usage monitoring
+
+2. **Usage Tracking**
+   ```
+   Provider Daemon → NATS → Billing Service (every minute)
+   ```
+   - Tracks actual GPU usage, VRAM allocation, and power consumption
+   - Calculates incremental costs based on dynamic pricing
+   - Monitors user balance and enforces spending limits
+
+3. **Payment Processing**
+   - Automatically deducts dGPU tokens from user wallet
+   - Transfers provider earnings to escrow
+   - Handles platform fee collection (5% default)
+
+4. **Session Completion**
+   - Finalizes billing calculations
+   - Processes provider payout to Solana wallet
+   - Generates usage reports and transaction records
+
+### Dynamic Pricing Algorithm
+
+#### Base Pricing Structure
+```
+Total Cost = (Base Rate + VRAM Cost + Power Cost) × Time × Demand Multiplier
+```
+
+#### Pricing Components
+
+1. **GPU Base Rates** (dGPU tokens per hour)
+   ```
+   RTX 4090: 0.50    A100: 2.00    H100: 3.00
+   RTX 4080: 0.40    A6000: 1.50   Apple M3 Ultra: 1.20
+   ```
+
+2. **VRAM Allocation** (per GB per hour)
+   ```
+   VRAM Cost = Allocated VRAM (GB) × 0.02 dGPU tokens
+   ```
+
+3. **Power Consumption** (per watt per hour)
+   ```
+   Power Cost = GPU Power Draw (watts) × 0.001 dGPU tokens
+   ```
+
+4. **Dynamic Demand Multiplier**
+   ```
+   High Demand (>80% utilization): 1.2x
+   Normal Demand (20-80%): 1.0x
+   Low Demand (<20%): 0.8x
+   ```
+
+### Blockchain Integration
+
+#### dGPU Token Operations
+
+1. **Wallet Creation**
+   ```solana
+   // Automatically creates SPL token account for user
+   Token Address: 7xUV6YR3rZMfExPqZiovQSUxpnHxr2KJJqFg1bFrpump
+   ```
+
+2. **Payment Processing**
+   ```
+   User Wallet → Platform Escrow → Provider Wallet
+   ```
+
+3. **Transaction Verification**
+   - All payments verified on Solana blockchain
+   - Real-time transaction confirmation
+   - Automatic retry for failed transactions
+
+#### Security Features
+
+- Multi-signature wallets for large transactions
+- Escrow system for job payments
+- Automatic refunds for failed jobs
+- Fraud detection and prevention
+
+### Monitoring and Observability
+
+#### Real-time Metrics
+- GPU utilization and temperature
+- Job execution progress
+- Billing and payment status
+- Provider performance metrics
+
+#### Alerting System
+- Job failure notifications
+- Payment processing alerts
+- Provider availability changes
+- System health monitoring
+
+### API Integration Examples
+
+#### Complete Job Submission Flow
+```bash
+# 1. Authenticate user
+JWT_TOKEN=$(curl -X POST /api/v1/auth/login -d '{"email":"user@example.com","password":"secure123"}' | jq -r '.access_token')
+
+# 2. Check wallet balance
+curl -H "Authorization: Bearer $JWT_TOKEN" /api/v1/billing/user/123/balance
+
+# 3. Browse available GPUs
+curl -H "Authorization: Bearer $JWT_TOKEN" "/api/v1/billing/marketplace?gpu_model=RTX4090"
+
+# 4. Estimate job cost
+COST_ESTIMATE=$(curl -X POST -H "Authorization: Bearer $JWT_TOKEN" /api/v1/billing/pricing/estimate -d '{
+  "gpu_model": "RTX4090",
+  "vram_gb": 12,
+  "estimated_hours": 2
+}')
+
+# 5. Submit job
+JOB_ID=$(curl -X POST -H "Authorization: Bearer $JWT_TOKEN" /api/v1/jobs -d '{
+  "name": "AI Training Job",
+  "docker_image": "pytorch/pytorch:latest",
+  "script": "python train.py",
+  "gpu_requirements": {"model": "RTX4090", "vram_gb": 12},
+  "max_cost_dgpu": 1.5
+}' | jq -r '.job_id')
+
+# 6. Monitor job progress
+curl -H "Authorization: Bearer $JWT_TOKEN" /api/v1/jobs/$JOB_ID
+
+# 7. Check real-time billing
+curl -H "Authorization: Bearer $JWT_TOKEN" /api/v1/billing/sessions/$JOB_ID/usage
+```
+
+This comprehensive workflow demonstrates how the Dante GPU Rental Platform creates a seamless, secure, and efficient marketplace for GPU resources, powered by blockchain technology and real-time billing.
+
 ## Contributing
 
 1. Fork the repository
