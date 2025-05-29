@@ -706,6 +706,26 @@ func NewGPUProvider(config *common.ProviderConfig) (*GPUProvider, error) {
 	// Create context for provider lifecycle
 	ctx, cancel := context.WithCancel(context.Background())
 
+	// Create provider instance
+	now := time.Now()
+	providerInstance := &common.Provider{
+		ID:         uuid.New(),
+		OwnerID:    config.OwnerID,
+		Name:       config.ProviderName,
+		Location:   config.Location,
+		Status:     "initializing",
+		GPUs:       gpus,
+		CreatedAt:  now,
+		UpdatedAt:  now,
+		LastSeenAt: &now,
+		Metadata: common.ProviderMetadata{
+			MaxConcurrentJobs: config.MaxConcurrentJobs,
+			MinPricePerHour:   config.MinPricePerHour,
+			SolanaWallet:      config.SolanaWalletAddress,
+			DockerEnabled:     config.EnableDocker,
+		},
+	}
+
 	// Initialize Solana wallet manager
 	walletManager, err := initializeSolanaWallet(config, logger)
 	if err != nil {
@@ -745,6 +765,7 @@ func NewGPUProvider(config *common.ProviderConfig) (*GPUProvider, error) {
 		config:             config,
 		logger:             logger,
 		httpClient:         httpClient,
+		provider:           providerInstance,
 		gpus:               gpus,
 		ctx:                ctx,
 		cancel:             cancel,

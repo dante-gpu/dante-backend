@@ -1,0 +1,47 @@
+# GPU Provider Test Configuration
+provider_config:
+  provider_name: "Dante-M1-Pro-Provider"
+  owner_id: "user123"
+  location: "local-test"
+  
+  # Service URLs (local testing)
+  api_gateway_url: "http://localhost:8090"
+  provider_registry_url: "http://localhost:8091"
+  billing_service_url: "http://localhost:8092"
+  nats_address: "nats://localhost:4222"
+  
+  # Provider settings
+  solana_wallet_address: "DGPUTest1234567890123456789012345678901234567890"
+  max_concurrent_jobs: 2
+  min_price_per_hour: "0.1"
+  enable_docker: true
+  
+  # Intervals
+  request_timeout: "30s"
+  heartbeat_interval: "30s"
+  metrics_interval: "10s"
+  
+  # Workspace
+  workspace_dir: "/tmp/dante-gpu-test"
+
+# GPU Rental Client Configuration  
+client_config:
+  api_gateway_url: "http://localhost:8090"
+  provider_registry_url: "http://localhost:8091"
+  billing_service_url: "http://localhost:8092"
+  storage_service_url: "http://localhost:8093"
+  
+  username: "testuser"
+  password: "testpass123"
+  solana_private_key: "test_private_key_here"
+  
+  default_job_type: "ai-training"
+  default_max_cost_dgpu: "1.0"
+  default_max_duration_hrs: 1
+  default_gpu_type: "apple-m1-pro"
+  default_vram_gb: 16
+  
+  request_timeout: "30s"
+  polling_interval: "5s"
+  enable_auto_retry: true
+  max_retry_attempts: 3 
