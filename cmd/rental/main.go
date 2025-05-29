@@ -7,11 +7,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/big"
 	"net/http"
 	"os"
 	"strconv"
 	"time"
 
+	bin "github.com/gagliardetto/binary"
 	"github.com/gagliardetto/solana-go"
 	"github.com/gagliardetto/solana-go/programs/token"
 	"github.com/gagliardetto/solana-go/rpc"
@@ -555,25 +557,32 @@ func (swm *SolanaWalletManager) getTokenBalance() (decimal.Decimal, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	// Get token account info
-	accountInfo, err := swm.rpcClient.GetAccountInfo(ctx, swm.tokenAccount)
+	// Get associated token account
+	tokenAccount, _, err := solana.FindAssociatedTokenAddress(swm.publicKey, swm.tokenMintPubkey)
 	if err != nil {
-		return decimal.Zero, fmt.Errorf("failed to get token account info: %w", err)
+		return decimal.Zero, fmt.Errorf("failed to find associated token account: %w", err)
+	}
+
+	// Get account info
+	accountInfo, err := swm.rpcClient.GetAccountInfo(ctx, tokenAccount)
+	if err != nil {
+		return decimal.Zero, fmt.Errorf("failed to get account info: %w", err)
 	}
 
 	if accountInfo.Value == nil {
-		// Token account doesn't exist yet
-		return decimal.Zero, nil
+		return decimal.Zero, nil // Account doesn't exist, balance is 0
 	}
 
-	// Parse token account data
+	// Parse token account data using binary decoder
+	decoder := bin.NewBorshDecoder(accountInfo.Value.Data.GetBinary())
 	var tokenAccountData token.Account
-	if err := tokenAccountData.UnmarshalWithDecoder(accountInfo.Value.Data.GetBinary()); err != nil {
+	if err := tokenAccountData.UnmarshalWithDecoder(decoder); err != nil {
 		return decimal.Zero, fmt.Errorf("failed to unmarshal token account data: %w", err)
 	}
 
 	// Convert token amount to decimal (assuming 6 decimals for dGPU token)
-	balance := decimal.NewFromBigInt(tokenAccountData.Amount.BigInt(), -6)
+	amountBig := new(big.Int).SetUint64(tokenAccountData.Amount)
+	balance := decimal.NewFromBigInt(amountBig, -6)
 	return balance, nil
 }
 
@@ -1124,109 +1133,111 @@ func (c *GPURentalClient) runInteractiveMode() error {
 func (c *GPURentalClient) submitAITrainingJob() {
 	fmt.Println("\n=== Submit AI Training Job ===")
 
-	fmt.Print("Job Name: ")
+	// Get job details from user
+	fmt.Print("Enter job name: ")
 	var jobName string
-	fmt.Scanf("%s", &jobName)
+	fmt.Scanln(&jobName)
 
-	fmt.Print("GPU Type (rtx4090/rtx3080/any): ")
+	fmt.Print("Enter GPU type (e.g., nvidia-rtx-4090): ")
 	var gpuType string
-	fmt.Scanf("%s", &gpuType)
+	fmt.Scanln(&gpuType)
 
-	fmt.Print("VRAM Required (GB): ")
-	var vramGB int
-	fmt.Scanf("%d", &vramGB)
+	fmt.Print("Enter VRAM requirement (GB): ")
+	var vramInput string
+	fmt.Scanln(&vramInput)
+	vramGB, _ := strconv.Atoi(vramInput)
 
-	fmt.Print("Max Duration (hours): ")
-	var maxHours int
-	fmt.Scanf("%d", &maxHours)
+	fmt.Print("Enter max cost (dGPU tokens): ")
+	var costInput string
+	fmt.Scanln(&costInput)
+	maxCost, _ := decimal.NewFromString(costInput)
 
-	fmt.Print("Max Cost (dGPU tokens): ")
-	var maxCostStr string
-	fmt.Scanf("%s", &maxCostStr)
-	maxCost, _ := decimal.NewFromString(maxCostStr)
+	fmt.Print("Enter max duration (hours): ")
+	var hoursInput string
+	fmt.Scanln(&hoursInput)
+	maxHours, _ := strconv.Atoi(hoursInput)
 
 	req := &JobSubmissionRequest{
-		Type:             "ai-training",
-		Name:             jobName,
-		Description:      "AI model training job",
-		GPUType:          gpuType,
-		GPUCount:         1,
-		Priority:         5,
-		MinVRAMGB:        vramGB,
-		MaxCostDGPU:      maxCost,
-		MaxDurationHours: maxHours,
-		Params: map[string]interface{}{
-			"framework":     "pytorch",
-			"model_type":    "transformer",
-			"dataset_size":  "large",
-			"batch_size":    32,
-			"learning_rate": 0.001,
+		Type:        "ai-training",
+		Name:        jobName,
+		Description: "AI model training job",
+		Requirements: ResourceRequirements{
+			GPUModel:    gpuType,
+			GPUMemoryMB: uint64(vramGB * 1024),
+			CPUCores:    4,
+			MemoryMB:    8192,
 		},
-		Tags: []string{"ai", "training", "pytorch"},
+		MaxCostDGPU:        maxCost,
+		MaxDurationMinutes: maxHours * 60,
+		CustomParams: map[string]interface{}{
+			"framework":    "pytorch",
+			"model_type":   "transformer",
+			"dataset_size": "large",
+		},
 	}
 
-	jobResp, err := c.SubmitJob(req)
+	resp, err := c.SubmitJob(req)
 	if err != nil {
 		fmt.Printf("Error submitting job: %v\n", err)
 		return
 	}
 
-	fmt.Printf("\n=== Job Submitted Successfully ===\n")
-	fmt.Printf("Job ID: %s\n", jobResp.JobID)
-	fmt.Printf("Status: %s\n", jobResp.Status)
-	fmt.Printf("Message: %s\n", jobResp.Message)
+	fmt.Printf("Job submitted successfully!\n")
+	fmt.Printf("Job ID: %s\n", resp.JobID)
+	fmt.Printf("Status: %s\n", resp.Status)
+	fmt.Printf("Estimated Cost: %s dGPU\n", resp.EstimatedCost.String())
 }
 
 // submitCustomScriptJob handles custom script job submission
 func (c *GPURentalClient) submitCustomScriptJob() {
 	fmt.Println("\n=== Submit Custom Script Job ===")
 
-	fmt.Print("Job Name: ")
+	fmt.Print("Enter job name: ")
 	var jobName string
-	fmt.Scanf("%s", &jobName)
+	fmt.Scanln(&jobName)
 
-	fmt.Print("Script Language (python/bash): ")
+	fmt.Print("Enter script language (python/bash): ")
 	var language string
-	fmt.Scanf("%s", &language)
+	fmt.Scanln(&language)
 
-	fmt.Print("GPU Type (rtx4090/rtx3080/any): ")
-	var gpuType string
-	fmt.Scanf("%s", &gpuType)
-
-	fmt.Print("VRAM Required (GB): ")
-	var vramGB int
-	fmt.Scanf("%d", &vramGB)
-
-	fmt.Print("Script Content (one line): ")
+	fmt.Print("Enter script content: ")
 	var scriptContent string
-	fmt.Scanf("%s", &scriptContent)
+	fmt.Scanln(&scriptContent)
+
+	fmt.Print("Enter GPU type: ")
+	var gpuType string
+	fmt.Scanln(&gpuType)
+
+	fmt.Print("Enter VRAM requirement (GB): ")
+	var vramInput string
+	fmt.Scanln(&vramInput)
+	vramGB, _ := strconv.Atoi(vramInput)
 
 	req := &JobSubmissionRequest{
-		Type:             "script-execution",
-		Name:             jobName,
-		Description:      "Custom script execution",
-		GPUType:          gpuType,
-		GPUCount:         1,
-		Priority:         3,
-		MinVRAMGB:        vramGB,
-		MaxCostDGPU:      decimal.NewFromFloat(5.0),
-		MaxDurationHours: 2,
-		Params: map[string]interface{}{
-			"language": language,
-			"script":   scriptContent,
+		Type:        "script-execution",
+		Name:        jobName,
+		Description: "Custom script execution",
+		Requirements: ResourceRequirements{
+			GPUModel:    gpuType,
+			GPUMemoryMB: uint64(vramGB * 1024),
+			CPUCores:    2,
+			MemoryMB:    4096,
 		},
-		Tags: []string{"script", "custom"},
+		MaxCostDGPU:        decimal.NewFromFloat(5.0),
+		MaxDurationMinutes: 120,
+		Script:             scriptContent,
+		ScriptLanguage:     language,
 	}
 
-	jobResp, err := c.SubmitJob(req)
+	resp, err := c.SubmitJob(req)
 	if err != nil {
 		fmt.Printf("Error submitting job: %v\n", err)
 		return
 	}
 
-	fmt.Printf("\n=== Job Submitted Successfully ===\n")
-	fmt.Printf("Job ID: %s\n", jobResp.JobID)
-	fmt.Printf("Status: %s\n", jobResp.Status)
+	fmt.Printf("Job submitted successfully!\n")
+	fmt.Printf("Job ID: %s\n", resp.JobID)
+	fmt.Printf("Status: %s\n", resp.Status)
 }
 
 // estimateJobCost handles cost estimation
@@ -1342,19 +1353,18 @@ func main() {
 			fmt.Printf("Available Balance: %s dGPU tokens\n", balance.AvailableBalance.StringFixed(4))
 
 		case "submit":
-			if len(os.Args) < 3 {
-				fmt.Println("Usage: rental submit <job_name>")
-				os.Exit(1)
-			}
-
+			// Quick job submission
 			req := &JobSubmissionRequest{
 				Type:        "ai-training",
 				Name:        os.Args[2],
 				Description: "Command line submitted job",
-				GPUType:     "any",
-				GPUCount:    1,
-				Priority:    5,
-				Params: map[string]interface{}{
+				Requirements: ResourceRequirements{
+					GPUModel:    "any",
+					GPUMemoryMB: 4096,
+					CPUCores:    2,
+					MemoryMB:    4096,
+				},
+				CustomParams: map[string]interface{}{
 					"framework": "pytorch",
 				},
 			}

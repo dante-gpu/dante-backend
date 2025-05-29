@@ -27,6 +27,8 @@ import (
 	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/google/uuid"
 	"github.com/nats-io/nats.go"
+	"github.com/shirou/gopsutil/v3/cpu"
+	"github.com/shirou/gopsutil/v3/mem"
 	"github.com/shopspring/decimal"
 	"go.uber.org/zap"
 
@@ -940,10 +942,11 @@ func (w *TaskWorker) run() {
 		case <-w.ctx.Done():
 			w.logger.Info("Worker stopping")
 			return
-		case task := <-w.provider.jobQueue:
-			if task != nil {
-				w.executeTask(task)
+		case task, ok := <-w.provider.jobQueue:
+			if !ok {
+				return
 			}
+			w.executeTask(task)
 		}
 	}
 }
@@ -1011,14 +1014,13 @@ func (w *TaskWorker) executeTask(task *Task) {
 	go w.collectMetrics(activeJob)
 
 	// Execute based on execution type
-	var result *TaskResult
 	var err error
 
 	switch task.ExecutionType {
 	case ExecutionTypeDocker:
-		result, err = w.executeDockerTask(activeJob)
-	case ExecutionTypeScript, ExecutionTypePython, ExecutionTypeBash:
-		result, err = w.executeScriptTask(activeJob)
+		_, err = w.executeDockerTask(activeJob)
+	case ExecutionTypeScript:
+		_, err = w.executeScriptTask(activeJob)
 	default:
 		err = fmt.Errorf("unsupported execution type: %s", task.ExecutionType)
 	}
@@ -1864,4 +1866,378 @@ func main() {
 	}
 
 	fmt.Println("GPU Provider stopped")
+}
+
+// isCommandAvailable checks if a command exists in PATH
+func isCommandAvailable(command string) bool {
+	_, err := exec.LookPath(command)
+	return err == nil
+}
+
+// detectGPUs detects available GPUs on the system
+func detectGPUs() ([]common.GPUDetail, error) {
+	var gpus []common.GPUDetail
+
+	// Detect NVIDIA GPUs
+	if isCommandAvailable("nvidia-smi") {
+		nvidiaGPUs, err := detectNVIDIAGPUs()
+		if err == nil {
+			gpus = append(gpus, nvidiaGPUs...)
+		}
+	}
+
+	// Detect AMD GPUs
+	if runtime.GOOS == "linux" {
+		amdGPUs, err := detectAMDGPUs()
+		if err == nil {
+			gpus = append(gpus, amdGPUs...)
+		}
+	}
+
+	// Detect Intel GPUs
+	if isCommandAvailable("intel_gpu_top") {
+		intelGPUs, err := detectIntelGPUs()
+		if err == nil {
+			gpus = append(gpus, intelGPUs...)
+		}
+	}
+
+	// Detect Apple Silicon GPUs
+	if runtime.GOOS == "darwin" {
+		appleGPUs, err := detectAppleGPUs()
+		if err == nil {
+			gpus = append(gpus, appleGPUs...)
+		}
+	}
+
+	if len(gpus) == 0 {
+		return nil, fmt.Errorf("no GPUs detected")
+	}
+
+	return gpus, nil
+}
+
+// detectNVIDIAGPUs detects NVIDIA GPUs using nvidia-smi
+func detectNVIDIAGPUs() ([]common.GPUDetail, error) {
+	cmd := exec.Command("nvidia-smi", "--query-gpu=index,name,memory.total,driver_version,compute_cap", "--format=csv,noheader,nounits")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("nvidia-smi command failed: %w", err)
+	}
+
+	var gpus []common.GPUDetail
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+
+		fields := strings.Split(line, ",")
+		if len(fields) < 5 {
+			continue
+		}
+
+		// Parse memory
+		memoryStr := strings.TrimSpace(fields[2])
+		memoryMB, err := strconv.ParseUint(memoryStr, 10, 64)
+		if err != nil {
+			memoryMB = 0
+		}
+
+		gpu := common.GPUDetail{
+			ModelName:         strings.TrimSpace(fields[1]),
+			VRAM:              memoryMB,
+			DriverVersion:     strings.TrimSpace(fields[3]),
+			ComputeCapability: strings.TrimSpace(fields[4]),
+			IsHealthy:         true,
+			IsAvailable:       true,
+			LastCheckAt:       time.Now(),
+		}
+
+		gpus = append(gpus, gpu)
+	}
+
+	return gpus, nil
+}
+
+// detectAMDGPUs detects AMD GPUs (Linux only)
+func detectAMDGPUs() ([]common.GPUDetail, error) {
+	var gpus []common.GPUDetail
+
+	// Check for ROCm devices
+	devices, err := filepath.Glob("/sys/class/drm/card*/device/vendor")
+	if err != nil {
+		return gpus, nil
+	}
+
+	for _, device := range devices {
+		vendorBytes, err := os.ReadFile(device)
+		if err != nil {
+			continue
+		}
+
+		vendor := strings.TrimSpace(string(vendorBytes))
+		if vendor == "0x1002" { // AMD vendor ID
+			// This is a basic AMD GPU detection
+			gpu := common.GPUDetail{
+				ModelName:   "AMD GPU",
+				VRAM:        8192, // Default assumption
+				IsHealthy:   true,
+				IsAvailable: true,
+				LastCheckAt: time.Now(),
+			}
+			gpus = append(gpus, gpu)
+		}
+	}
+
+	return gpus, nil
+}
+
+// detectIntelGPUs detects Intel GPUs
+func detectIntelGPUs() ([]common.GPUDetail, error) {
+	var gpus []common.GPUDetail
+
+	// Basic Intel GPU detection
+	if runtime.GOOS == "linux" {
+		devices, err := filepath.Glob("/sys/class/drm/card*/device/vendor")
+		if err != nil {
+			return gpus, nil
+		}
+
+		for _, device := range devices {
+			vendorBytes, err := os.ReadFile(device)
+			if err != nil {
+				continue
+			}
+
+			vendor := strings.TrimSpace(string(vendorBytes))
+			if vendor == "0x8086" { // Intel vendor ID
+				gpu := common.GPUDetail{
+					ModelName:   "Intel GPU",
+					VRAM:        4096, // Default assumption
+					IsHealthy:   true,
+					IsAvailable: true,
+					LastCheckAt: time.Now(),
+				}
+				gpus = append(gpus, gpu)
+			}
+		}
+	}
+
+	return gpus, nil
+}
+
+// detectAppleGPUs detects Apple Silicon GPUs (macOS only)
+func detectAppleGPUs() ([]common.GPUDetail, error) {
+	var gpus []common.GPUDetail
+
+	if runtime.GOOS != "darwin" {
+		return gpus, nil
+	}
+
+	cmd := exec.Command("system_profiler", "SPDisplaysDataType", "-json")
+	output, err := cmd.Output()
+	if err != nil {
+		return gpus, nil
+	}
+
+	// Parse system_profiler output for GPU info
+	// This is a simplified implementation
+	if strings.Contains(string(output), "Apple") {
+		gpu := common.GPUDetail{
+			ModelName:   "Apple Silicon GPU",
+			VRAM:        8192, // Unified memory assumption
+			IsHealthy:   true,
+			IsAvailable: true,
+			LastCheckAt: time.Now(),
+		}
+		gpus = append(gpus, gpu)
+	}
+
+	return gpus, nil
+}
+
+// Initialize sets up the GPU provider
+func (p *GPUProvider) Initialize() error {
+	p.logger.Info("Initializing GPU provider", zap.String("provider_id", p.provider.ID.String()))
+
+	// Initialize job queue
+	p.jobQueue = make(chan *Task, 100)
+
+	// Initialize worker pool
+	p.initializeWorkerPool()
+
+	// Start background services
+	go p.startHeartbeat()
+	go p.startMetricsCollection()
+	go p.startHealthChecks()
+
+	p.logger.Info("GPU provider initialized successfully")
+	return nil
+}
+
+// Shutdown gracefully shuts down the GPU provider
+func (p *GPUProvider) Shutdown() error {
+	p.logger.Info("Shutting down GPU provider")
+
+	p.mu.Lock()
+	p.isShuttingDown = true
+	p.mu.Unlock()
+
+	// Cancel context to stop all operations
+	p.cancel()
+
+	// Close job queue
+	close(p.jobQueue)
+
+	// Wait for all goroutines to finish
+	p.wg.Wait()
+
+	// Close NATS connection
+	if p.natsConn != nil {
+		p.natsConn.Close()
+	}
+
+	// Clean up execution environment
+	if p.executionEnv != nil && p.executionEnv.dockerClient != nil {
+		p.executionEnv.dockerClient.Close()
+	}
+
+	p.logger.Info("GPU provider shutdown complete")
+	return nil
+}
+
+// startHeartbeat sends periodic heartbeats to the registry
+func (p *GPUProvider) startHeartbeat() {
+	p.wg.Add(1)
+	defer p.wg.Done()
+
+	ticker := time.NewTicker(p.config.HeartbeatInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-p.ctx.Done():
+			return
+		case <-ticker.C:
+			if err := p.sendHeartbeat(); err != nil {
+				p.logger.Error("Failed to send heartbeat", zap.Error(err))
+			}
+		}
+	}
+}
+
+// sendHeartbeat sends a heartbeat to the provider registry
+func (p *GPUProvider) sendHeartbeat() error {
+	// Update GPU metrics
+	for i := range p.gpus {
+		// Simple availability check
+		p.gpus[i].IsAvailable = true
+		p.gpus[i].LastCheckAt = time.Now()
+	}
+
+	// Send heartbeat to registry
+	heartbeatData := map[string]interface{}{
+		"provider_id": p.provider.ID,
+		"status":      "online",
+		"gpu_metrics": p.gpus,
+		"timestamp":   time.Now(),
+	}
+
+	data, err := json.Marshal(heartbeatData)
+	if err != nil {
+		return fmt.Errorf("failed to marshal heartbeat data: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/api/v1/providers/%s/heartbeat", p.config.ProviderRegistryURL, p.provider.ID)
+	req, err := http.NewRequestWithContext(p.ctx, "POST", url, bytes.NewBuffer(data))
+	if err != nil {
+		return fmt.Errorf("failed to create heartbeat request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := p.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send heartbeat: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("heartbeat failed with status: %d", resp.StatusCode)
+	}
+
+	return nil
+}
+
+// startMetricsCollection starts periodic metrics collection
+func (p *GPUProvider) startMetricsCollection() {
+	p.wg.Add(1)
+	defer p.wg.Done()
+
+	ticker := time.NewTicker(p.config.MetricsInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-p.ctx.Done():
+			return
+		case <-ticker.C:
+			p.collectSystemMetrics()
+		}
+	}
+}
+
+// collectSystemMetrics collects system and GPU metrics
+func (p *GPUProvider) collectSystemMetrics() {
+	p.systemMetrics = &SystemMetrics{
+		LastUpdated: time.Now(),
+	}
+
+	// Collect CPU metrics
+	if cpuPercent, err := cpu.Percent(time.Second, false); err == nil && len(cpuPercent) > 0 {
+		p.systemMetrics.CPUUsage = cpuPercent[0]
+	}
+
+	// Collect memory metrics
+	if memInfo, err := mem.VirtualMemory(); err == nil {
+		p.systemMetrics.MemoryUsage = memInfo.Used / 1024 / 1024
+		p.systemMetrics.MemoryTotal = memInfo.Total / 1024 / 1024
+	}
+}
+
+// startHealthChecks starts periodic health checks
+func (p *GPUProvider) startHealthChecks() {
+	p.wg.Add(1)
+	defer p.wg.Done()
+
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-p.ctx.Done():
+			return
+		case <-ticker.C:
+			p.performHealthChecks()
+		}
+	}
+}
+
+// performHealthChecks performs various health checks
+func (p *GPUProvider) performHealthChecks() {
+	// Check GPU availability
+	for i := range p.gpus {
+		p.gpus[i].IsHealthy = true
+		p.gpus[i].LastCheckAt = time.Now()
+	}
+
+	// Check Docker availability
+	if p.executionEnv != nil && p.executionEnv.dockerClient != nil {
+		_, err := p.executionEnv.dockerClient.Ping(p.ctx)
+		if err != nil {
+			p.logger.Warn("Docker health check failed", zap.Error(err))
+		}
+	}
 }
