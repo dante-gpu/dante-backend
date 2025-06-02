@@ -1,0 +1,388 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15
+    container_name: dante-postgres
+    environment:
+      POSTGRES_DB: dante
+      POSTGRES_USER: dante
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dante123}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - dante-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dante"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # NATS Server with JetStream
+  nats:
+    image: nats:latest
+    container_name: dante-nats
+    command: ["-js", "-m", "8222"]
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    volumes:
+      - nats_data:/data
+    networks:
+      - dante-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8222/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Consul Service Discovery
+  consul:
+    image: hashicorp/consul:1.15
+    container_name: dante-consul
+    command: consul agent -dev -client=0.0.0.0 -ui
+    ports:
+      - "8500:8500"
+      - "8600:8600/udp"
+    volumes:
+      - consul_data:/consul/data
+    networks:
+      - dante-network
+    healthcheck:
+      test: ["CMD", "consul", "members"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # MinIO Object Storage
+  minio:
+    image: minio/minio:latest
+    container_name: dante-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-dante}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-dante123456}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - dante-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Redis (for caching and rate limiting)
+  redis:
+    image: redis:7-alpine
+    container_name: dante-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - dante-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Auth Service (Python/FastAPI)
+  auth-service:
+    build:
+      context: ./auth-service
+      dockerfile: Dockerfile
+    container_name: dante-auth-service
+    environment:
+      DATABASE_URL: postgresql+psycopg2://dante:${POSTGRES_PASSWORD:-dante123}@postgres:5432/dante
+      SECRET_KEY: ${JWT_SECRET:-your_jwt_secret_key_change_in_production}
+      ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: 1440
+    ports:
+      - "8090:8090"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - dante-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8090/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # Billing Payment Service (Go)
+  billing-service:
+    build:
+      context: ./billing-payment-service
+      dockerfile: Dockerfile
+    container_name: dante-billing-service
+    environment:
+      DATABASE_URL: postgres://dante:${POSTGRES_PASSWORD:-dante123}@postgres:5432/dante?sslmode=disable
+      NATS_URL: nats://nats:4222
+      CONSUL_URL: http://consul:8500
+      SOLANA_PRIVATE_KEY: ${SOLANA_PRIVATE_KEY}
+      DGPU_TOKEN_ADDRESS: ${DGPU_TOKEN_ADDRESS:-7xUV6YR3rZMfExPqZiovQSUxpnHxr2KJJqFg1bFrpump}
+      DEVELOPMENT_MODE: ${DEVELOPMENT_MODE:-true}
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      consul:
+        condition: service_healthy
+    networks:
+      - dante-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # Provider Registry Service (Go)
+  provider-registry:
+    build:
+      context: ./provider-registry-service
+      dockerfile: Dockerfile
+    container_name: dante-provider-registry
+    environment:
+      DATABASE_URL: postgres://dante:${POSTGRES_PASSWORD:-dante123}@postgres:5432/dante?sslmode=disable
+      NATS_URL: nats://nats:4222
+      CONSUL_URL: http://consul:8500
+    ports:
+      - "8081:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      consul:
+        condition: service_healthy
+    networks:
+      - dante-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # Storage Service (Go)
+  storage-service:
+    build:
+      context: ./storage-service
+      dockerfile: Dockerfile
+    container_name: dante-storage-service
+    environment:
+      DATABASE_URL: postgres://dante:${POSTGRES_PASSWORD:-dante123}@postgres:5432/dante?sslmode=disable
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-dante}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-dante123456}
+      NATS_URL: nats://nats:4222
+      CONSUL_URL: http://consul:8500
+    ports:
+      - "8082:8082"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      consul:
+        condition: service_healthy
+    networks:
+      - dante-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # Scheduler Orchestrator Service (Go)
+  scheduler-service:
+    build:
+      context: ./scheduler-orchestrator-service
+      dockerfile: Dockerfile
+    container_name: dante-scheduler-service
+    environment:
+      DATABASE_URL: postgres://dante:${POSTGRES_PASSWORD:-dante123}@postgres:5432/dante?sslmode=disable
+      NATS_URL: nats://nats:4222
+      CONSUL_URL: http://consul:8500
+      BILLING_SERVICE_URL: http://billing-service:8080
+    ports:
+      - "8083:8083"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      consul:
+        condition: service_healthy
+      billing-service:
+        condition: service_healthy
+    networks:
+      - dante-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # API Gateway (Go)
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    container_name: dante-api-gateway
+    environment:
+      NATS_URL: nats://nats:4222
+      CONSUL_URL: http://consul:8500
+      JWT_SECRET: ${JWT_SECRET:-your_jwt_secret_key_change_in_production}
+      AUTH_SERVICE_URL: http://auth-service:8090
+      BILLING_SERVICE_URL: http://billing-service:8080
+      PROVIDER_SERVICE_URL: http://provider-registry:8081
+      STORAGE_SERVICE_URL: http://storage-service:8082
+      SCHEDULER_SERVICE_URL: http://scheduler-service:8083
+    ports:
+      - "8080:8080"
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      billing-service:
+        condition: service_healthy
+      provider-registry:
+        condition: service_healthy
+      storage-service:
+        condition: service_healthy
+      scheduler-service:
+        condition: service_healthy
+    networks:
+      - dante-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # Frontend Web Application (Next.js)
+  frontend:
+    build:
+      context: ./frontend/web-app
+      dockerfile: Dockerfile
+    container_name: dante-frontend
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8080
+      NEXT_PUBLIC_WS_URL: ws://localhost:8080
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api-gateway
+    networks:
+      - dante-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # Monitoring Stack
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: dante-prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring-logging-service/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    networks:
+      - dante-network
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: dante-grafana
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring-logging-service/grafana/provisioning:/etc/grafana/provisioning
+      - ./monitoring-logging-service/grafana/dashboards:/var/lib/grafana/dashboards
+    networks:
+      - dante-network
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:latest
+    container_name: dante-loki
+    command: -config.file=/etc/loki/local-config.yaml
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./monitoring-logging-service/loki/loki-config.yaml:/etc/loki/local-config.yaml
+      - loki_data:/loki
+    networks:
+      - dante-network
+    restart: unless-stopped
+
+  # Test Server for Demo
+  test-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.test-server
+    container_name: dante-test-server
+    ports:
+      - "9999:9999"
+    depends_on:
+      - postgres
+      - nats
+      - consul
+      - redis
+      - minio
+    networks:
+      - dante-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  nats_data:
+  consul_data:
+  minio_data:
+  redis_data:
+  prometheus_data:
+  grafana_data:
+  loki_data:
+
+networks:
+  dante-network:
+    driver: bridge 

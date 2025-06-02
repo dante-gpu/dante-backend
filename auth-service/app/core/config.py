@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7 # 7 days
 
     # --- Database Settings ---
-    DATABASE_URL: str = "postgresql+psycopg2://user:password@localhost:5432/dante_auth"
+    DATABASE_URL: str = "postgresql+psycopg2://dante:dante123@localhost:5432/dante"
     # Example: postgresql+psycopg2://db_user:db_password@db_host:db_port/db_name
 
     # --- CORS Settings (if needed directly by this service) ---

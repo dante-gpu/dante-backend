@@ -35,7 +35,7 @@ services:
 
   # Consul Service Discovery
   consul:
-    image: consul:latest
+    image: hashicorp/consul:1.15
     container_name: dante-consul
     command: consul agent -dev -client=0.0.0.0 -ui
     ports:

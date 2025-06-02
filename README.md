@@ -11,551 +11,404 @@ The platform consists of multiple microservices working together to provide a co
 1. **API Gateway**
    - Language: Go
    - Description: Central entry point handling authentication, routing, and billing endpoints. Provides unified access to all platform services with JWT authentication and rate limiting.
-   - Status: Production Ready
+   - Status: Production Ready ✅
 
 2. **Auth Service**
    - Language: Python (FastAPI)
    - Description: JWT-based user authentication and authorization with role management. Handles user registration, login, and token management.
-   - Status: Production Ready
+   - Status: Production Ready ✅
 
 3. **Provider Registry Service**
    - Language: Go
    - Description: GPU provider registration, discovery, and status management. Tracks provider hardware specifications, availability, and performance metrics.
-   - Status: Production Ready
+   - Status: Production Ready ✅
 
 4. **Scheduler Orchestrator Service**
    - Language: Go
    - Description: Intelligent job scheduling with billing validation and provider selection. Integrates with billing service for cost validation before job execution.
-   - Status: Production Ready
+   - Status: Production Ready ✅
 
 5. **Provider Daemon**
    - Language: Go
    - Description: Executes tasks on provider machines with real-time monitoring and billing integration. Supports Docker and script execution with GPU resource management.
-   - Status: Production Ready
+   - Status: Production Ready ✅
 
 6. **Storage Service**
    - Language: Go
    - Description: S3-compatible file storage with presigned URL support. Handles user data, AI models, datasets, and job results using MinIO backend.
-   - Status: Production Ready
+   - Status: Production Ready ✅
 
 7. **Billing Payment Service**
    - Language: Go
    - Description: Complete dGPU token payment system with Solana blockchain integration. Handles wallets, transactions, pricing, and real-time billing.
-   - Status: Production Ready
+   - Status: Production Ready ✅
 
-8. **Monitoring Logging Service**
+8. **Frontend Web Application**
+   - Language: Next.js (TypeScript/React)
+   - Description: Modern web interface for users and providers. Features real-time dashboard, GPU marketplace, job management, and wallet integration.
+   - Status: Production Ready ✅
+
+9. **Monitoring Logging Service**
    - Language: Docker Compose Stack
    - Description: Comprehensive system monitoring with Prometheus, Grafana, and Loki. Provides real-time metrics, alerting, and log aggregation.
-   - Status: Production Ready
+   - Status: Production Ready ✅
 
-### Key Features
+## 🚀 Quick Start - Production Deployment
 
-#### Blockchain Integration
+### Prerequisites
+
+- Docker 20.10+ and Docker Compose 2.0+
+- 4GB+ RAM and 20GB+ storage
+- Solana wallet with dGPU tokens for testing
+
+### 1. Clone and Setup
+
+```bash
+git clone https://github.com/dante-gpu/dante-backend.git
+cd dante-backend
+
+# Copy environment configuration
+cp env.production.example .env
+
+# Edit with your production values
+nano .env
+```
+
+### 2. Configure Environment
+
+Update `.env` file with your production settings:
+
+```bash
+# Required: Set secure passwords
+POSTGRES_PASSWORD=your_secure_postgres_password
+JWT_SECRET=your_super_secure_jwt_secret_key_256_bits_minimum
+MINIO_ROOT_PASSWORD=your_secure_minio_password
+
+# Required: Solana configuration
+SOLANA_PRIVATE_KEY=your_base58_encoded_solana_private_key
+DGPU_TOKEN_ADDRESS=7xUV6YR3rZMfExPqZiovQSUxpnHxr2KJJqFg1bFrpump
+
+# Optional: Production URLs
+NEXT_PUBLIC_API_URL=https://api.yourdomain.com
+```
+
+### 3. Deploy Platform
+
+```bash
+# Make deployment script executable
+chmod +x deploy-production.sh
+
+# Deploy complete platform
+./deploy-production.sh
+```
+
+The deployment script will:
+- ✅ Check prerequisites
+- ✅ Build all Docker images
+- ✅ Deploy infrastructure services (Postgres, NATS, Consul, MinIO, Redis)
+- ✅ Deploy application services (Auth, Billing, Provider Registry, Storage, Scheduler)
+- ✅ Deploy API Gateway and Frontend
+- ✅ Deploy monitoring stack (Prometheus, Grafana, Loki)
+- ✅ Run health checks and validation tests
+
+### 4. Access Services
+
+After successful deployment:
+
+| Service | URL | Credentials |
+|---------|-----|-------------|
+| **Frontend Dashboard** | http://localhost:3000 | demo/demo123 |
+| **API Gateway** | http://localhost:8080 | - |
+| **Grafana Monitoring** | http://localhost:3001 | admin/admin |
+| **Prometheus Metrics** | http://localhost:9090 | - |
+| **Consul Service Discovery** | http://localhost:8500 | - |
+| **MinIO Storage Console** | http://localhost:9001 | dante/dante123456 |
+
+### 5. Test Platform
+
+```bash
+# Test API Gateway health
+curl http://localhost:8080/health
+
+# Test Frontend health  
+curl http://localhost:3000/api/health
+
+# Test user authentication
+curl -X POST http://localhost:8080/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"demo","password":"demo123"}'
+
+# Check GPU marketplace
+curl http://localhost:8080/api/v1/billing/marketplace
+```
+
+## Key Features
+
+### ✅ Blockchain Integration
 - Native dGPU token payments on Solana blockchain
 - Real-time transaction verification and confirmation
 - Automated wallet management and token transfers
 - Platform fee collection and provider payouts
 
-#### Dynamic Pricing Engine
+### ✅ Dynamic Pricing Engine
 - GPU model-specific base rates (RTX 4090, A100, H100, Apple Silicon, etc.)
 - VRAM allocation-based pricing (per GB per hour)
 - Power consumption multipliers
 - Dynamic demand and supply adjustments
 - Platform fee calculation (5% default)
 
-#### Real-time Billing System
+### ✅ Real-time Billing System
 - Session-based billing with automatic monitoring
 - Usage tracking with 1-minute intervals
 - Insufficient funds protection with grace periods
 - Automatic session termination on balance depletion
 - Provider earnings calculation and distribution
 
-#### GPU Marketplace
+### ✅ GPU Marketplace
 - Real-time GPU availability and pricing
 - Advanced filtering by GPU type, VRAM, location
 - Cost estimation before job submission
 - Provider performance metrics and ratings
 
-#### Secure Job Execution
+### ✅ Secure Job Execution
 - Docker and script-based execution environments
 - GPU resource isolation and allocation
 - Real-time performance monitoring
 - Automatic cleanup and resource management
 
+### ✅ Modern Web Interface
+- React/Next.js frontend with TypeScript
+- Real-time dashboard with live updates
+- Responsive design for desktop and mobile
+- Comprehensive provider and user management
+
+### ✅ Production-Ready Infrastructure
+- Microservices architecture with Docker
+- Service discovery with Consul
+- Message queuing with NATS JetStream
+- Monitoring with Prometheus and Grafana
+- Logging with Loki
+- Load balancing and health checks
+
 ## Technology Stack
 
 ### Backend Services
-- Go 1.21+ - Primary backend language for microservices
-- Python 3.11+ - Auth service with FastAPI
-- NATS JetStream - Message queue and event streaming
-- Consul - Service discovery and configuration
-- PostgreSQL - Primary database for all services
+- **Go 1.21+** - Primary backend language for microservices
+- **Python 3.11+** - Auth service with FastAPI
+- **NATS JetStream** - Message queue and event streaming
+- **Consul** - Service discovery and configuration
+- **PostgreSQL** - Primary database for all services
+
+### Frontend
+- **Next.js 13+** - React framework with TypeScript
+- **Tailwind CSS** - Utility-first CSS framework
+- **shadcn/ui** - Modern component library
+- **React Query** - Data fetching and caching
 
 ### Blockchain & Payments
-- Solana - Blockchain platform for dGPU token
-- SPL Token - dGPU token implementation (7xUV6YR3rZMfExPqZiovQSUxpnHxr2KJJqFg1bFrpump)
-- Solana Go SDK - Blockchain integration library
+- **Solana** - Blockchain platform for dGPU token
+- **SPL Token** - dGPU token implementation
+- **Solana Go SDK** - Blockchain integration library
 
 ### Storage & Monitoring
-- MinIO - S3-compatible object storage
-- Prometheus - Metrics collection and alerting
-- Grafana - Monitoring dashboards and visualization
-- Loki - Log aggregation and analysis
+- **MinIO** - S3-compatible object storage
+- **Redis** - Caching and rate limiting
+- **Prometheus** - Metrics collection and alerting
+- **Grafana** - Monitoring dashboards and visualization
+- **Loki** - Log aggregation and analysis
 
 ### Infrastructure
-- Docker - Containerization and deployment
-- Docker Compose - Local development orchestration
+- **Docker** - Containerization and deployment
+- **Docker Compose** - Orchestration and deployment
 
-## Getting Started
+## Development
 
-### Prerequisites
+### Local Development Setup
 
-- Go 1.21 or higher
-- Python 3.11 or higher
-- Docker and Docker Compose
-- PostgreSQL 14+
-- NATS Server 2.9+
-- Consul 1.15+
-- MinIO (latest)
-
-### Environment Setup
-
-1. Clone the repository:
 ```bash
-git clone https://github.com/dante-gpu/dante-backend.git
-cd dante-backend
+# Start infrastructure services
+docker-compose up -d postgres nats consul minio redis
+
+# Run auth service
+cd auth-service
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8090
+
+# Run other services (in separate terminals)
+cd billing-payment-service && go run cmd/main.go
+cd provider-registry-service && go run cmd/main.go  
+cd storage-service && go run cmd/main.go
+cd scheduler-orchestrator-service && go run cmd/main.go
+cd api-gateway && go run cmd/main.go
+
+# Run frontend
+cd frontend/web-app
+npm install
+npm run dev
 ```
 
-2. Set up Solana wallet for development:
-```bash
-export DEVELOPMENT_MODE=true
-export SOLANA_PRIVATE_KEY="your_base58_private_key"
-export DGPU_TOKEN_ADDRESS="7xUV6YR3rZMfExPqZiovQSUxpnHxr2KJJqFg1bFrpump"
-```
-
-3. Configure database and services:
-```bash
-export DATABASE_URL="postgres://dante:dante123@localhost:5432/dante"
-export NATS_URL="nats://localhost:4222"
-export CONSUL_URL="http://localhost:8500"
-export JWT_SECRET="your_jwt_secret_key"
-```
-
-### Infrastructure Startup
-
-1. Start core infrastructure:
-```bash
-docker-compose up -d infrastructure
-```
-
-2. Start monitoring stack:
-```bash
-cd monitoring-logging-service
-docker-compose up -d
-```
-
-3. Initialize databases:
-```bash
-# Auth service migrations
-cd auth-service && alembic upgrade head
-
-# Other services will auto-migrate on startup
-```
-
-### Service Startup Order
-
-Start services in the following order for proper dependency resolution:
-
-1. Auth Service (port 8000)
-2. Provider Registry Service (port 8001)
-3. Billing Payment Service (port 8080)
-4. Storage Service (port 8002)
-5. Scheduler Orchestrator Service (port 8003)
-6. API Gateway (port 8080)
-7. Provider Daemon (on provider machines)
-
-Refer to individual service READMEs for detailed setup instructions.
-
-## Service Documentation
+### Service Documentation
 
 Each service includes comprehensive documentation:
 
 - [API Gateway](./api-gateway/README.md) - Routing, authentication, billing endpoints
-- [Auth Service](./auth-service/README.md) - User management and JWT authentication
-- [Provider Registry Service](./provider-registry-service/README.md) - GPU provider management
-- [Scheduler Orchestrator Service](./scheduler-orchestrator-service/README.md) - Job scheduling and billing integration
-- [Provider Daemon](./provider-daemon/README.md) - Task execution and monitoring
-- [Storage Service](./storage-service/README.md) - File storage and management
+- [Auth Service](./auth-service/README.md) - User management and JWT authentication  
 - [Billing Payment Service](./billing-payment-service/README.md) - dGPU token payments and blockchain
-- [Monitoring Logging Service](./monitoring-logging-service/README.md) - System monitoring and alerting
+- [Provider Registry Service](./provider-registry-service/README.md) - GPU provider management
+- [Storage Service](./storage-service/README.md) - File storage and management
+- [Scheduler Orchestrator Service](./scheduler-orchestrator-service/README.md) - Job scheduling and execution
+- [Frontend Web App](./frontend/web-app/README.md) - User interface and components
 
-## API Endpoints
+## API Documentation
 
-### Authentication
-- `POST /api/v1/auth/login` - User login with JWT token
-- `POST /api/v1/auth/register` - User registration
-- `POST /api/v1/auth/refresh` - Token refresh
+### Authentication Endpoints
+```bash
+POST /auth/login          # User login
+POST /auth/register       # User registration  
+GET  /auth/profile        # Get user profile
+```
 
-### Job Management
-- `POST /api/v1/jobs` - Submit GPU rental job
-- `GET /api/v1/jobs/{id}` - Get job status
-- `DELETE /api/v1/jobs/{id}` - Cancel job
+### Job Management Endpoints
+```bash
+POST /api/v1/jobs         # Submit GPU rental job
+GET  /api/v1/jobs/{id}    # Get job status
+DELETE /api/v1/jobs/{id}  # Cancel job
+```
 
-### Billing & Payments
-- `POST /api/v1/billing/wallet` - Create dGPU wallet
-- `GET /api/v1/billing/wallet/{id}/balance` - Check wallet balance
-- `POST /api/v1/billing/wallet/{id}/deposit` - Deposit dGPU tokens
-- `POST /api/v1/billing/wallet/{id}/withdraw` - Withdraw dGPU tokens
-- `GET /api/v1/billing/marketplace` - Browse available GPUs
-- `POST /api/v1/billing/pricing/estimate` - Estimate job cost
+### Billing & Marketplace Endpoints
+```bash
+GET  /api/v1/billing/marketplace    # Browse available GPUs
+POST /api/v1/billing/estimate       # Estimate job cost
+GET  /api/v1/billing/wallet/{id}    # Get wallet balance
+POST /api/v1/billing/deposit        # Deposit tokens
+```
 
-### Provider Management
-- `POST /api/v1/providers` - Register GPU provider
-- `GET /api/v1/providers` - List available providers
-- `PUT /api/v1/providers/{id}/status` - Update provider status
+### Provider Management Endpoints
+```bash
+POST /api/v1/providers              # Register GPU provider
+GET  /api/v1/providers              # List providers
+PUT  /api/v1/providers/{id}/status  # Update provider status
+```
 
-### Storage
-- `PUT /api/v1/storage/{bucket}/{key}` - Upload file
-- `GET /api/v1/storage/{bucket}/{key}` - Download file
-- `DELETE /api/v1/storage/{bucket}/{key}` - Delete file
+## Deployment Options
 
-## Configuration
+### 🐳 Docker Compose (Recommended)
 
-### Environment Variables
-
-Key environment variables for the platform:
+Complete platform deployment with single command:
 
 ```bash
-# Solana Configuration
-SOLANA_RPC_URL=https://api.mainnet-beta.solana.com
-DGPU_TOKEN_ADDRESS=7xUV6YR3rZMfExPqZiovQSUxpnHxr2KJJqFg1bFrpump
-SOLANA_PRIVATE_KEY=your_base58_private_key
-
-# Database
-DATABASE_URL=postgres://user:pass@localhost:5432/dante
-
-# NATS
-NATS_URL=nats://localhost:4222
-
-# Consul
-CONSUL_URL=http://localhost:8500
-
-# JWT
-JWT_SECRET=your_jwt_secret_key
+./deploy-production.sh
 ```
 
-### Pricing Configuration
+### ☸️ Kubernetes
 
-Default GPU pricing rates (dGPU tokens per hour):
-
-- NVIDIA RTX 4090: 0.50
-- NVIDIA RTX 4080: 0.40
-- NVIDIA A100: 2.00
-- NVIDIA H100: 3.00
-- Apple M3 Ultra: 1.20
-- Apple M2 Ultra: 1.00
-
-Additional rates:
-- VRAM: 0.02 per GB per hour
-- Power: 0.001 per watt per hour
-- Platform fee: 5%
-
-## Development
-
-### Running Tests
+Deploy to Kubernetes cluster:
 
 ```bash
-# Run tests for all Go services
-make test
+# Apply Kubernetes manifests
+kubectl apply -f k8s/
 
-# Run tests for specific service
-cd billing-payment-service && go test ./...
-
-# Run Python tests
-cd auth-service && python -m pytest
+# Check deployment status
+kubectl get pods -n dante-gpu
 ```
 
-### Building Services
+### ☁️ Cloud Deployment
+
+#### AWS ECS
+```bash
+# Deploy to AWS ECS
+aws ecs create-cluster --cluster-name dante-gpu
+# Configure task definitions and services
+```
+
+#### Google Cloud Run
+```bash
+# Deploy services to Cloud Run
+gcloud run deploy dante-api-gateway --image gcr.io/project/api-gateway
+```
+
+#### Azure Container Instances
+```bash
+# Deploy to Azure
+az container create --resource-group dante-gpu --file docker-compose.yml
+```
+
+## Monitoring & Operations
+
+### Health Checks
+
+All services provide health check endpoints:
 
 ```bash
-# Build all services
-make build
-
-# Build specific service
-cd api-gateway && go build -o bin/api-gateway cmd/main.go
+curl http://localhost:8080/health    # API Gateway
+curl http://localhost:8090/health    # Auth Service
+curl http://localhost:3000/api/health # Frontend
 ```
 
-### Database Migrations
+### Monitoring Stack
+
+- **Prometheus** (http://localhost:9090) - Metrics and alerts
+- **Grafana** (http://localhost:3001) - Dashboards and visualization  
+- **Loki** (http://localhost:3100) - Log aggregation
+
+### Logs
+
+View service logs:
 
 ```bash
-# Run migrations for billing service
-cd billing-payment-service && migrate -path migrations -database $DATABASE_URL up
+# All services
+docker-compose logs -f
 
-# Run migrations for auth service
-cd auth-service && alembic upgrade head
+# Specific service
+docker-compose logs -f api-gateway
+
+# Live tail
+docker-compose logs -f --tail=100
 ```
 
-## Deployment
+### Backup & Recovery
 
-### Production Deployment
-
-1. Configure production environment variables
-2. Set up SSL certificates for HTTPS
-3. Configure Solana mainnet endpoints
-4. Set up database backups
-5. Configure monitoring alerts
-6. Deploy using Docker Compose or Kubernetes
-
-### Security Considerations
-
-- Use strong JWT secrets in production
-- Secure Solana private keys with hardware wallets
-- Enable database encryption at rest
-- Configure network firewalls
-- Regular security audits and updates
-
-## How the Platform Works
-
-### User Journey Overview
-
-The Dante GPU Rental Platform operates as a decentralized marketplace connecting GPU providers with users who need computational resources for AI training and other GPU-intensive tasks.
-
-#### For GPU Providers
-
-1. **Registration and Setup**
-   ```bash
-   # Provider installs the daemon on their machine
-   ./provider-daemon --register
-   ```
-   - Provider registers their GPU hardware (model, VRAM, location)
-   - Sets custom pricing rates or uses platform defaults
-   - Configures availability schedule and resource limits
-
-2. **Resource Monitoring**
-   - Provider daemon continuously monitors GPU status and availability
-   - Reports real-time metrics to the platform (temperature, utilization, power)
-   - Automatically updates availability based on local usage
-
-3. **Job Execution**
-   - Receives job assignments through NATS message queue
-   - Executes tasks in isolated Docker containers or script environments
-   - Monitors resource usage and reports billing data in real-time
-
-4. **Earnings and Payouts**
-   - Earns dGPU tokens based on actual usage time and resource allocation
-   - Platform automatically calculates earnings (base rate + VRAM + power consumption)
-   - Receives automatic payouts to Solana wallet after job completion
-
-#### For GPU Renters
-
-1. **Account Setup and Wallet**
-   ```bash
-   # User creates account and dGPU wallet
-   curl -X POST /api/v1/auth/register -d '{"email":"user@example.com","password":"secure123"}'
-   curl -X POST /api/v1/billing/wallet -H "Authorization: Bearer $JWT_TOKEN"
-   ```
-
-2. **Browse GPU Marketplace**
-   ```bash
-   # Browse available GPUs with filtering
-   curl "/api/v1/billing/marketplace?gpu_model=RTX4090&min_vram=16&location=US"
-   ```
-   - Filter by GPU model, VRAM, location, and price range
-   - View real-time availability and current pricing
-   - Check provider ratings and performance history
-
-3. **Cost Estimation**
-   ```bash
-   # Estimate job cost before submission
-   curl -X POST /api/v1/billing/pricing/estimate -d '{
-     "gpu_model": "RTX4090",
-     "vram_gb": 12,
-     "estimated_hours": 2.5,
-     "power_watts": 350
-   }'
-   ```
-
-4. **Job Submission and Payment**
-   ```bash
-   # Submit GPU rental job
-   curl -X POST /api/v1/jobs -d '{
-     "name": "AI Model Training",
-     "docker_image": "pytorch/pytorch:latest",
-     "script": "python train.py",
-     "gpu_requirements": {
-       "model": "RTX4090",
-       "vram_gb": 12,
-       "min_compute_capability": 8.6
-     },
-     "max_duration_hours": 4,
-     "max_cost_dgpu": 2.5
-   }'
-   ```
-
-5. **Real-time Monitoring**
-   - Monitor job progress and resource usage through API
-   - Receive real-time billing updates
-   - Get notifications for job completion or issues
-
-### Platform Workflow
-
-#### Job Lifecycle
-
-1. **Job Submission**
-   ```
-   User → API Gateway → Scheduler Service → Job Queue (NATS)
-   ```
-
-2. **Provider Matching**
-   ```
-   Scheduler → Provider Registry → Billing Validation → Provider Selection
-   ```
-
-3. **Job Execution**
-   ```
-   Scheduler → Provider Daemon → Docker/Script Execution → Real-time Monitoring
-   ```
-
-4. **Billing and Completion**
-   ```
-   Provider Daemon → Billing Service → Solana Blockchain → Payment Processing
-   ```
-
-#### Real-time Billing Process
-
-1. **Session Initialization**
-   - Billing service creates a rental session when job starts
-   - Validates user has sufficient dGPU token balance
-   - Sets up real-time usage monitoring
-
-2. **Usage Tracking**
-   ```
-   Provider Daemon → NATS → Billing Service (every minute)
-   ```
-   - Tracks actual GPU usage, VRAM allocation, and power consumption
-   - Calculates incremental costs based on dynamic pricing
-   - Monitors user balance and enforces spending limits
-
-3. **Payment Processing**
-   - Automatically deducts dGPU tokens from user wallet
-   - Transfers provider earnings to escrow
-   - Handles platform fee collection (5% default)
-
-4. **Session Completion**
-   - Finalizes billing calculations
-   - Processes provider payout to Solana wallet
-   - Generates usage reports and transaction records
-
-### Dynamic Pricing Algorithm
-
-#### Base Pricing Structure
-```
-Total Cost = (Base Rate + VRAM Cost + Power Cost) × Time × Demand Multiplier
-```
-
-#### Pricing Components
-
-1. **GPU Base Rates** (dGPU tokens per hour)
-   ```
-   RTX 4090: 0.50    A100: 2.00    H100: 3.00
-   RTX 4080: 0.40    A6000: 1.50   Apple M3 Ultra: 1.20
-   ```
-
-2. **VRAM Allocation** (per GB per hour)
-   ```
-   VRAM Cost = Allocated VRAM (GB) × 0.02 dGPU tokens
-   ```
-
-3. **Power Consumption** (per watt per hour)
-   ```
-   Power Cost = GPU Power Draw (watts) × 0.001 dGPU tokens
-   ```
-
-4. **Dynamic Demand Multiplier**
-   ```
-   High Demand (>80% utilization): 1.2x
-   Normal Demand (20-80%): 1.0x
-   Low Demand (<20%): 0.8x
-   ```
-
-### Blockchain Integration
-
-#### dGPU Token Operations
-
-1. **Wallet Creation**
-   ```solana
-   // Automatically creates SPL token account for user
-   Token Address: 7xUV6YR3rZMfExPqZiovQSUxpnHxr2KJJqFg1bFrpump
-   ```
-
-2. **Payment Processing**
-   ```
-   User Wallet → Platform Escrow → Provider Wallet
-   ```
-
-3. **Transaction Verification**
-   - All payments verified on Solana blockchain
-   - Real-time transaction confirmation
-   - Automatic retry for failed transactions
-
-#### Security Features
-
-- Multi-signature wallets for large transactions
-- Escrow system for job payments
-- Automatic refunds for failed jobs
-- Fraud detection and prevention
-
-### Monitoring and Observability
-
-#### Real-time Metrics
-- GPU utilization and temperature
-- Job execution progress
-- Billing and payment status
-- Provider performance metrics
-
-#### Alerting System
-- Job failure notifications
-- Payment processing alerts
-- Provider availability changes
-- System health monitoring
-
-### API Integration Examples
-
-#### Complete Job Submission Flow
 ```bash
-# 1. Authenticate user
-JWT_TOKEN=$(curl -X POST /api/v1/auth/login -d '{"email":"user@example.com","password":"secure123"}' | jq -r '.access_token')
+# Create backup
+./scripts/backup.sh
 
-# 2. Check wallet balance
-curl -H "Authorization: Bearer $JWT_TOKEN" /api/v1/billing/user/123/balance
-
-# 3. Browse available GPUs
-curl -H "Authorization: Bearer $JWT_TOKEN" "/api/v1/billing/marketplace?gpu_model=RTX4090"
-
-# 4. Estimate job cost
-COST_ESTIMATE=$(curl -X POST -H "Authorization: Bearer $JWT_TOKEN" /api/v1/billing/pricing/estimate -d '{
-  "gpu_model": "RTX4090",
-  "vram_gb": 12,
-  "estimated_hours": 2
-}')
-
-# 5. Submit job
-JOB_ID=$(curl -X POST -H "Authorization: Bearer $JWT_TOKEN" /api/v1/jobs -d '{
-  "name": "AI Training Job",
-  "docker_image": "pytorch/pytorch:latest",
-  "script": "python train.py",
-  "gpu_requirements": {"model": "RTX4090", "vram_gb": 12},
-  "max_cost_dgpu": 1.5
-}' | jq -r '.job_id')
-
-# 6. Monitor job progress
-curl -H "Authorization: Bearer $JWT_TOKEN" /api/v1/jobs/$JOB_ID
-
-# 7. Check real-time billing
-curl -H "Authorization: Bearer $JWT_TOKEN" /api/v1/billing/sessions/$JOB_ID/usage
+# Restore from backup
+./scripts/restore.sh backup-20241201.tar.gz
 ```
 
-This comprehensive workflow demonstrates how the Dante GPU Rental Platform creates a seamless, secure, and efficient marketplace for GPU resources, powered by blockchain technology and real-time billing.
+## Security
+
+### Authentication & Authorization
+- JWT token-based authentication
+- Role-based access control (RBAC)
+- API rate limiting and throttling
+- Request validation and sanitization
+
+### Infrastructure Security
+- Container security scanning
+- Network segmentation
+- Secrets management
+- Regular security updates
+
+### Blockchain Security
+- Multi-signature wallets for platform funds
+- Transaction verification and confirmation
+- Smart contract auditing
+- Private key encryption
+
+## Performance
+
+### Scalability
+- Horizontal scaling for all services
+- Load balancing with health checks
+- Database connection pooling
+- Caching with Redis
+
+### Optimization
+- Docker multi-stage builds
+- Image optimization and compression
+- Database indexing and query optimization
+- CDN for static assets
 
 ## Contributing
 
@@ -581,5 +434,12 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 For support and questions:
 - Create an issue on GitHub
-- Join our Discord community
+- Join our Discord community: [discord.gg/dante-gpu](https://discord.gg/dante-gpu)
 - Check the documentation wiki
+- Email: support@dantegpu.com
+
+---
+
+**🎉 Dante GPU Rental Platform - Decentralized GPU Computing for the Future**
+
+Built with ❤️ by the Dante GPU team

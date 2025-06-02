@@ -1,0 +1,7 @@
+port: :8080
+consul_address: localhost:8500
+nats_address: nats://localhost:4222
+log_level: info
+jwt_secret: default-very-secure-jwt-secret-key-change-in-production
+jwt_expiration: 1h0m0s
+request_timeout: 1m0s

@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-chi/chi"
+	"github.com/go-chi/chi/middleware"
 	"github.com/google/uuid"
 )
 
@@ -52,10 +54,10 @@ func main() {
 	time.Sleep(2 * time.Second)
 
 	fmt.Println("All test services started!")
-	fmt.Println("API Gateway: http://localhost:8090")
-	fmt.Println("Provider Registry: http://localhost:8091")
-	fmt.Println("Billing Service: http://localhost:8092")
-	fmt.Println("Storage Service: http://localhost:8093")
+	fmt.Printf("API Gateway: http://localhost:%d\n", 8090)
+	fmt.Printf("Provider Registry: http://localhost:%d\n", 8091)
+	fmt.Printf("Billing Service: http://localhost:%d\n", 8092)
+	fmt.Printf("Storage Service: http://localhost:%d\n", 8093)
 	fmt.Println("Press Ctrl+C to stop all services")
 
 	// Keep main goroutine alive
@@ -63,10 +65,24 @@ func main() {
 }
 
 func startAPIGateway() {
-	mux := http.NewServeMux()
+	router := chi.NewRouter()
+	router.Use(middleware.Logger)
+	router.Use(middleware.Recoverer)
+	router.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+			if r.Method == "OPTIONS" {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	})
 
 	// Authentication
-	mux.HandleFunc("/api/v1/auth/login", func(w http.ResponseWriter, r *http.Request) {
+	router.HandleFunc("/api/v1/auth/login", func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"token":      "test_jwt_token_12345",
 			"user_id":    "user123",
@@ -78,7 +94,7 @@ func startAPIGateway() {
 	})
 
 	// Job submission
-	mux.HandleFunc("/api/v1/jobs", func(w http.ResponseWriter, r *http.Request) {
+	router.HandleFunc("/api/v1/jobs", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "POST" {
 			jobID := uuid.New().String()
 			job := &Job{
@@ -100,7 +116,7 @@ func startAPIGateway() {
 	})
 
 	// Job status
-	mux.HandleFunc("/api/v1/jobs/", func(w http.ResponseWriter, r *http.Request) {
+	router.HandleFunc("/api/v1/jobs/", func(w http.ResponseWriter, r *http.Request) {
 		jobID := r.URL.Path[len("/api/v1/jobs/"):]
 		if job, exists := jobs[jobID]; exists {
 			w.Header().Set("Content-Type", "application/json")
@@ -111,7 +127,7 @@ func startAPIGateway() {
 	})
 
 	fmt.Println("API Gateway starting on :8090")
-	log.Fatal(http.ListenAndServe(":8090", mux))
+	log.Fatal(http.ListenAndServe(":8090", router))
 }
 
 func startProviderRegistry() {
