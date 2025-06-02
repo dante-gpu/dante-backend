@@ -163,8 +163,14 @@ export default function HomePage() {
                   >
                     Sign In
                   </Link>
+                  <Link 
+                    href="/register"
+                    className="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md transition-colors border border-black hover:bg-secondary"
+                  >
+                    Sign Up
+                  </Link>
                   <Button 
-                    onClick={() => router.push('/login')}
+                    onClick={() => router.push('/register')}
                     className="bg-primary hover:bg-primary/90 text-white border-2 border-black btn-hover-professional"
                   >
                     Get Started
@@ -197,7 +203,7 @@ export default function HomePage() {
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-12">
             <Button 
               size="lg"
-              onClick={() => router.push('/login')}
+              onClick={() => router.push('/register')}
               className="bg-primary hover:bg-primary/90 text-white px-8 py-3 border-2 border-black btn-hover-professional"
             >
               Start Renting GPUs

@@ -102,7 +102,7 @@ nats:
   jetstream:
     enabled: true
     stream_name: "DANTE_BILLING"
-    max_age: "7d"
+    max_age: "168h"  # 7 days in hours
     max_msgs: 1000000
 
 # Consul Configuration
