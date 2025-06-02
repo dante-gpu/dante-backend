@@ -57,7 +57,6 @@ export default function HomePage() {
   const loadMarketplaceData = async () => {
     setLoading(true);
     try {
-      // Simulate loading time
       await new Promise(resolve => setTimeout(resolve, 1000));
       
       setProviders([
@@ -124,13 +123,13 @@ export default function HomePage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
+    <div className="min-h-screen bg-professional">
       {/* Navigation */}
-      <nav className="sticky top-0 z-50 backdrop-blur-md bg-white/80 border-b border-gray-200">
+      <nav className="sticky top-0 z-50 nav-professional">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-red-800 to-red-900 rounded-lg flex items-center justify-center shadow-lg">
+              <div className="w-10 h-10 logo-container flex items-center justify-center">
                 <Image
                   src="/dantegpu-logo.png"
                   alt="DanteGPU Logo"
@@ -151,7 +150,7 @@ export default function HomePage() {
                   <span className="text-sm text-gray-700">Welcome, {user?.username}!</span>
                   <Button 
                     onClick={() => router.push('/dashboard')}
-                    className="bg-indigo-600 hover:bg-indigo-700"
+                    className="bg-primary hover:bg-primary/90 text-white border-2 border-black btn-hover-professional"
                   >
                     Dashboard
                   </Button>
@@ -160,13 +159,13 @@ export default function HomePage() {
                 <>
                   <Link 
                     href="/login"
-                    className="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md transition-colors"
+                    className="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md transition-colors border border-black hover:bg-secondary"
                   >
                     Sign In
                   </Link>
                   <Button 
                     onClick={() => router.push('/login')}
-                    className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                    className="bg-primary hover:bg-primary/90 text-white border-2 border-black btn-hover-professional"
                   >
                     Get Started
                     <ArrowRight className="ml-2 h-4 w-4" />
@@ -181,13 +180,13 @@ export default function HomePage() {
       {/* Hero Section */}
       <section className="relative py-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto text-center">
-          <div className="inline-flex items-center px-3 py-1 rounded-full bg-indigo-100 text-indigo-800 text-sm font-medium mb-6">
-            <Sparkles className="w-4 h-4 mr-2" />
+          <div className="inline-flex items-center px-4 py-2 rounded-full bg-secondary border-2 border-black text-gray-800 text-sm font-medium mb-6 shadow-professional">
+            <Sparkles className="w-4 h-4 mr-2 text-primary" />
             Powered by Solana Blockchain & dGPU Tokens
           </div>
           
           <h1 className="text-4xl md:text-6xl font-bold text-gray-900 mb-6">
-            Rent <span className="text-indigo-600">High-Performance</span> GPUs
+            Rent <span className="text-primary">High-Performance</span> GPUs
           </h1>
           
           <p className="text-lg md:text-xl text-gray-600 mb-8 max-w-3xl mx-auto">
@@ -199,7 +198,7 @@ export default function HomePage() {
             <Button 
               size="lg"
               onClick={() => router.push('/login')}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3"
+              className="bg-primary hover:bg-primary/90 text-white px-8 py-3 border-2 border-black btn-hover-professional"
             >
               Start Renting GPUs
               <ArrowRight className="ml-2 h-5 w-5" />
@@ -207,23 +206,23 @@ export default function HomePage() {
             <Button 
               variant="outline" 
               size="lg"
-              className="border-indigo-600 text-indigo-600 hover:bg-indigo-50 px-8 py-3"
+              className="border-2 border-black text-gray-900 hover:bg-secondary px-8 py-3 btn-hover-professional"
             >
               View Marketplace
             </Button>
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-4xl mx-auto">
-            <div className="text-center">
-              <div className="text-3xl font-bold text-indigo-600">1000+</div>
+            <div className="text-center p-4 bg-card border-2 border-black rounded-lg shadow-professional">
+              <div className="text-3xl font-bold text-primary">1000+</div>
               <div className="text-gray-600">Available GPUs</div>
             </div>
-            <div className="text-center">
-              <div className="text-3xl font-bold text-indigo-600">99.9%</div>
+            <div className="text-center p-4 bg-card border-2 border-black rounded-lg shadow-professional">
+              <div className="text-3xl font-bold text-primary">99.9%</div>
               <div className="text-gray-600">Uptime Guarantee</div>
             </div>
-            <div className="text-center">
-              <div className="text-3xl font-bold text-indigo-600">24/7</div>
+            <div className="text-center p-4 bg-card border-2 border-black rounded-lg shadow-professional">
+              <div className="text-3xl font-bold text-primary">24/7</div>
               <div className="text-gray-600">Expert Support</div>
             </div>
           </div>
@@ -231,7 +230,7 @@ export default function HomePage() {
       </section>
 
       {/* Features Section */}
-      <section className="py-16 px-4 sm:px-6 lg:px-8 bg-white">
+      <section className="py-16 px-4 sm:px-6 lg:px-8 bg-card">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold text-gray-900 mb-4">
@@ -275,10 +274,10 @@ export default function HomePage() {
                 description: "Expert technical support available around the clock to help with your computing needs."
               }
             ].map((feature, index) => (
-              <Card key={index} className="hover:shadow-lg transition-shadow duration-300">
+              <Card key={index} className="card-professional">
                 <CardHeader>
                   <div className="flex items-center space-x-3">
-                    <div className="p-2 bg-indigo-100 rounded-lg text-indigo-600">
+                    <div className="p-2 bg-secondary border border-black rounded-lg text-primary">
                       {feature.icon}
                     </div>
                     <CardTitle className="text-lg">{feature.title}</CardTitle>
@@ -296,7 +295,7 @@ export default function HomePage() {
       </section>
 
       {/* Use Cases Section */}
-      <section className="py-16 px-4 sm:px-6 lg:px-8 bg-gray-50">
+      <section className="py-16 px-4 sm:px-6 lg:px-8 bg-secondary">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold text-gray-900 mb-4">
@@ -313,30 +312,30 @@ export default function HomePage() {
                 title: "AI & Machine Learning",
                 description: "Train neural networks, run inference, and develop AI models with powerful GPU acceleration.",
                 icon: <Monitor className="w-6 h-6" />,
-                color: "bg-red-800"
+                color: "bg-primary"
               },
               {
                 title: "3D Rendering",
                 description: "Render complex 3D scenes, animations, and visual effects with professional-grade GPUs.",
                 icon: <Cpu className="w-6 h-6" />,
-                color: "bg-purple-500"
+                color: "bg-primary"
               },
               {
                 title: "Cryptocurrency Mining",
                 description: "Mine cryptocurrencies efficiently with optimized GPU configurations and competitive rates.",
                 icon: <DollarSign className="w-6 h-6" />,
-                color: "bg-green-500"
+                color: "bg-primary"
               },
               {
                 title: "Scientific Computing",
                 description: "Accelerate research computations, simulations, and data analysis with parallel processing.",
                 icon: <Activity className="w-6 h-6" />,
-                color: "bg-orange-500"
+                color: "bg-primary"
               }
             ].map((useCase, index) => (
-              <Card key={index} className="hover:shadow-lg transition-shadow duration-300">
+              <Card key={index} className="card-professional">
                 <CardHeader>
-                  <div className={`w-10 h-10 ${useCase.color} rounded-lg flex items-center justify-center text-white mb-3`}>
+                  <div className={`w-10 h-10 ${useCase.color} border-2 border-black rounded-lg flex items-center justify-center text-white mb-3`}>
                     {useCase.icon}
                   </div>
                   <CardTitle className="text-lg">{useCase.title}</CardTitle>
@@ -353,7 +352,7 @@ export default function HomePage() {
       </section>
 
       {/* Popular Providers Section */}
-      <section className="py-16 px-4 sm:px-6 lg:px-8 bg-white">
+      <section className="py-16 px-4 sm:px-6 lg:px-8 bg-card">
         <div className="max-w-7xl mx-auto">
           <div className="flex justify-between items-center mb-12">
             <div>
@@ -364,7 +363,7 @@ export default function HomePage() {
                 Top-rated providers with verified performance
               </p>
             </div>
-            <Button variant="outline" className="hidden md:block">
+            <Button variant="outline" className="hidden md:block border-2 border-black btn-hover-professional">
               View All Providers
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
@@ -373,7 +372,7 @@ export default function HomePage() {
           {loading ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {[1, 2, 3].map((item) => (
-                <Card key={item} className="animate-pulse">
+                <Card key={item} className="animate-pulse card-professional">
                   <CardHeader>
                     <div className="h-6 bg-gray-300 rounded mb-2"></div>
                     <div className="h-4 bg-gray-200 rounded"></div>
@@ -390,7 +389,7 @@ export default function HomePage() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {providers.map((provider) => (
-                <Card key={provider.id} className="hover:shadow-lg transition-shadow duration-300">
+                <Card key={provider.id} className="card-professional">
                   <CardHeader>
                     <div className="flex justify-between items-start">
                       <div>
@@ -402,7 +401,7 @@ export default function HomePage() {
                           <span className="text-sm text-gray-600">{provider.location}</span>
                         </div>
                       </div>
-                      <Badge variant={provider.available ? "default" : "secondary"}>
+                      <Badge className={`badge-professional ${provider.available ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
                         {provider.available ? "Available" : "Busy"}
                       </Badge>
                     </div>
@@ -429,11 +428,11 @@ export default function HomePage() {
                         </div>
                       </div>
                       
-                      <div className="flex justify-between items-center pt-3 border-t border-gray-200">
-                        <span className="text-lg font-bold text-indigo-600">
+                      <div className="flex justify-between items-center pt-3 border-t-2 border-black">
+                        <span className="text-lg font-bold text-primary">
                           ${provider.hourly_rate}/hour
                         </span>
-                        <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700">
+                        <Button size="sm" className="bg-primary hover:bg-primary/90 border border-black btn-hover-professional">
                           Rent Now
                         </Button>
                       </div>
@@ -447,12 +446,12 @@ export default function HomePage() {
       </section>
 
       {/* Footer */}
-      <footer className="bg-gray-900 text-white py-12">
+      <footer className="bg-gray-900 text-white py-12 border-t-4 border-black">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
             <div className="col-span-1 md:col-span-2">
               <div className="flex items-center space-x-3 mb-4">
-                <div className="w-8 h-8 bg-gradient-to-br from-red-800 to-red-900 rounded-lg flex items-center justify-center">
+                <div className="w-8 h-8 logo-container flex items-center justify-center">
                   <Image
                     src="/dantegpu-logo.png"
                     alt="DanteGPU Logo"
@@ -476,20 +475,20 @@ export default function HomePage() {
             <div>
               <h4 className="text-lg font-semibold mb-4">Platform</h4>
               <ul className="space-y-2 text-gray-400 text-sm">
-                <li><Link href="#" className="hover:text-white transition-colors">Marketplace</Link></li>
-                <li><Link href="#" className="hover:text-white transition-colors">Providers</Link></li>
-                <li><Link href="#" className="hover:text-white transition-colors">Pricing</Link></li>
-                <li><Link href="#" className="hover:text-white transition-colors">Documentation</Link></li>
+                <li><Link href="#" className="hover:text-white transition-colors border-b border-transparent hover:border-white">Marketplace</Link></li>
+                <li><Link href="#" className="hover:text-white transition-colors border-b border-transparent hover:border-white">Providers</Link></li>
+                <li><Link href="#" className="hover:text-white transition-colors border-b border-transparent hover:border-white">Pricing</Link></li>
+                <li><Link href="#" className="hover:text-white transition-colors border-b border-transparent hover:border-white">Documentation</Link></li>
               </ul>
             </div>
             
             <div>
               <h4 className="text-lg font-semibold mb-4">Support</h4>
               <ul className="space-y-2 text-gray-400 text-sm">
-                <li><Link href="#" className="hover:text-white transition-colors">Help Center</Link></li>
-                <li><Link href="#" className="hover:text-white transition-colors">Contact Us</Link></li>
-                <li><Link href="#" className="hover:text-white transition-colors">Status</Link></li>
-                <li><Link href="#" className="hover:text-white transition-colors">Community</Link></li>
+                <li><Link href="#" className="hover:text-white transition-colors border-b border-transparent hover:border-white">Help Center</Link></li>
+                <li><Link href="#" className="hover:text-white transition-colors border-b border-transparent hover:border-white">Contact Us</Link></li>
+                <li><Link href="#" className="hover:text-white transition-colors border-b border-transparent hover:border-white">Status</Link></li>
+                <li><Link href="#" className="hover:text-white transition-colors border-b border-transparent hover:border-white">Community</Link></li>
               </ul>
             </div>
           </div>
@@ -499,8 +498,8 @@ export default function HomePage() {
               © 2024 DanteGPU. All rights reserved.
             </p>
             <div className="flex items-center space-x-6 mt-4 md:mt-0">
-              <Link href="#" className="text-gray-400 hover:text-white transition-colors text-sm">Privacy Policy</Link>
-              <Link href="#" className="text-gray-400 hover:text-white transition-colors text-sm">Terms of Service</Link>
+              <Link href="#" className="text-gray-400 hover:text-white transition-colors text-sm border-b border-transparent hover:border-white">Privacy Policy</Link>
+              <Link href="#" className="text-gray-400 hover:text-white transition-colors text-sm border-b border-transparent hover:border-white">Terms of Service</Link>
             </div>
           </div>
         </div>

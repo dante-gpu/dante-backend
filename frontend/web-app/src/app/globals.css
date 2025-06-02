@@ -7,24 +7,24 @@
 
 @layer base {
   :root {
-    --background: 29 17% 88%; /* #e2e0d0 in HSL */
+    --background: 28 15% 87%; /* #e2e0d0 in HSL */
     --foreground: 240 10% 3.9%;
-    --card: 29 17% 88%; /* #e2e0d0 in HSL */
+    --card: 28 15% 92%; /* Slightly lighter than background */
     --card-foreground: 240 10% 3.9%;
-    --popover: 29 17% 88%; /* #e2e0d0 in HSL */
+    --popover: 28 15% 92%;
     --popover-foreground: 240 10% 3.9%;
     --primary: 0 100% 34%; /* #ad0000 in HSL */
     --primary-foreground: 0 0% 98%;
-    --secondary: 29 17% 85%; /* Slightly darker version of background */
+    --secondary: 28 15% 82%; /* Darker version of background */
     --secondary-foreground: 240 5.9% 10%;
-    --muted: 29 17% 85%; /* Slightly darker version of background */
+    --muted: 28 15% 82%;
     --muted-foreground: 240 3.8% 46.1%;
     --accent: 0 100% 34%; /* #ad0000 in HSL */
     --accent-foreground: 0 0% 98%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
-    --border: 240 5.9% 90%;
-    --input: 29 17% 85%; /* Slightly darker version of background */
+    --border: 0 0% 0%; /* Black borders */
+    --input: 28 15% 85%;
     --ring: 0 100% 34%; /* #ad0000 in HSL */
     --radius: 0.5rem;
     --chart-1: 12 76% 61%;
@@ -54,7 +54,7 @@
     --accent-foreground: 0 0% 98%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 0 0% 98%;
-    --border: 240 3.7% 15.9%;
+    --border: 0 0% 20%;
     --input: 240 3.7% 15.9%;
     --ring: 0 100% 34%; /* #ad0000 in HSL */
     --chart-1: 220 70% 50%;
@@ -81,27 +81,57 @@
 
 @layer components {
   .btn-primary {
-    @apply bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 rounded-md font-medium transition-colors;
+    @apply bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 rounded-md font-medium transition-colors border border-black;
   }
   
   .btn-secondary {
-    @apply bg-secondary text-secondary-foreground hover:bg-secondary/80 px-4 py-2 rounded-md font-medium transition-colors;
+    @apply bg-secondary text-secondary-foreground hover:bg-secondary/80 px-4 py-2 rounded-md font-medium transition-colors border border-black;
   }
   
   .btn-outline {
-    @apply border border-border bg-background hover:bg-accent hover:text-accent-foreground px-4 py-2 rounded-md font-medium transition-colors;
+    @apply border-2 border-black bg-background hover:bg-accent hover:text-accent-foreground px-4 py-2 rounded-md font-medium transition-colors;
   }
   
   .card {
-    @apply rounded-lg border bg-card text-card-foreground shadow-sm;
+    @apply rounded-lg border-2 border-black bg-card text-card-foreground shadow-sm;
   }
   
   .glass-effect {
-    @apply bg-white/80 backdrop-blur-sm border border-white/20 shadow-glass;
+    @apply bg-white/80 backdrop-blur-sm border-2 border-black shadow-glass;
   }
   
   .dark .glass-effect {
-    @apply bg-black/40 backdrop-blur-sm border border-white/10;
+    @apply bg-black/40 backdrop-blur-sm border-2 border-white/20;
+  }
+
+  /* Professional input styling with black borders */
+  .form-input {
+    @apply border-2 border-black rounded-md px-3 py-2 bg-background focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary transition-colors;
+  }
+
+  /* Professional card styling */
+  .card-professional {
+    @apply bg-card border-2 border-black rounded-lg shadow-lg hover:shadow-xl transition-all duration-300;
+  }
+
+  /* Navigation styling */
+  .nav-professional {
+    @apply bg-card/95 backdrop-blur-md border-b-2 border-black;
+  }
+
+  /* Logo container */
+  .logo-container {
+    @apply bg-gradient-to-br from-[#ad0000] to-[#8b0000] border-2 border-black rounded-lg shadow-lg;
+  }
+
+  /* Badge styling */
+  .badge-professional {
+    @apply border border-black px-2 py-1 rounded-md text-xs font-medium;
+  }
+
+  /* Button hover effects */
+  .btn-hover-professional {
+    @apply transition-all duration-200 hover:scale-105 hover:shadow-lg;
   }
 }
 
@@ -124,6 +154,16 @@
   
   .text-gradient {
     @apply bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent;
+  }
+
+  /* Custom background patterns */
+  .bg-professional {
+    background: linear-gradient(135deg, #e2e0d0 0%, #f0ede5 50%, #e8e6d8 100%);
+  }
+
+  /* Professional shadows */
+  .shadow-professional {
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06), inset 0 0 0 1px rgba(0, 0, 0, 1);
   }
 }
 
@@ -183,18 +223,18 @@
 }
 
 ::-webkit-scrollbar-track {
-  @apply bg-background;
+  @apply bg-background border border-black;
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-border rounded-full;
+  @apply bg-primary border border-black rounded-full;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  @apply bg-border/80;
+  @apply bg-primary/80;
 }
 
 /* Focus Styles */
 .focus-visible:focus-visible {
-  @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background border-2 border-black;
 }
