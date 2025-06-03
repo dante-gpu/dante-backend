@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Boolean, DateTime, func, UUID as pgUUID
+from sqlalchemy import Column, String, Boolean, DateTime, func, UUID as pgUUID, Float
 from sqlalchemy.orm import relationship
 import uuid
 
@@ -15,6 +15,13 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
     role = Column(String, nullable=False, default="user", index=True)
     is_active = Column(Boolean(), default=True)
+
+    # Wallet and Financials
+    wallet_address = Column(String, unique=True, index=True, nullable=True) # Solana wallet address
+    balance_dgpu = Column(Float, nullable=False, default=0.0)
+    total_spent = Column(Float, nullable=False, default=0.0)
+    total_earned = Column(Float, nullable=False, default=0.0)
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
 

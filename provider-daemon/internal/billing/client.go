@@ -39,40 +39,40 @@ func NewClient(config *Config, logger *zap.Logger) *Client {
 
 // UsageUpdateRequest represents a usage update request
 type UsageUpdateRequest struct {
-	SessionID        uuid.UUID `json:"session_id"`
-	GPUUtilization   uint8     `json:"gpu_utilization_percent"`
-	VRAMUtilization  uint8     `json:"vram_utilization_percent"`
-	PowerDraw        uint32    `json:"power_draw_w"`
-	Temperature      uint8     `json:"temperature_c"`
-	Timestamp        time.Time `json:"timestamp"`
+	SessionID       uuid.UUID `json:"session_id"`
+	GPUUtilization  uint8     `json:"gpu_utilization_percent"`
+	VRAMUtilization uint8     `json:"vram_utilization_percent"`
+	PowerDraw       uint32    `json:"power_draw_w"`
+	Temperature     uint8     `json:"temperature_c"`
+	Timestamp       time.Time `json:"timestamp"`
 }
 
 // SessionResponse represents a session response from billing service
 type SessionResponse struct {
 	Session struct {
-		ID                uuid.UUID       `json:"id"`
-		UserID            string          `json:"user_id"`
-		ProviderID        uuid.UUID       `json:"provider_id"`
-		JobID             *string         `json:"job_id,omitempty"`
-		Status            string          `json:"status"`
-		GPUModel          string          `json:"gpu_model"`
-		AllocatedVRAM     uint64          `json:"allocated_vram_mb"`
-		TotalVRAM         uint64          `json:"total_vram_mb"`
-		VRAMPercentage    decimal.Decimal `json:"vram_percentage"`
-		HourlyRate        decimal.Decimal `json:"hourly_rate"`
-		VRAMRate          decimal.Decimal `json:"vram_rate"`
-		PowerRate         decimal.Decimal `json:"power_rate"`
-		PlatformFeeRate   decimal.Decimal `json:"platform_fee_rate"`
-		EstimatedPowerW   uint32          `json:"estimated_power_w"`
-		ActualPowerW      *uint32         `json:"actual_power_w,omitempty"`
-		StartedAt         time.Time       `json:"started_at"`
-		EndedAt           *time.Time      `json:"ended_at,omitempty"`
-		LastBilledAt      time.Time       `json:"last_billed_at"`
-		TotalCost         decimal.Decimal `json:"total_cost"`
-		PlatformFee       decimal.Decimal `json:"platform_fee"`
-		ProviderEarnings  decimal.Decimal `json:"provider_earnings"`
-		CreatedAt         time.Time       `json:"created_at"`
-		UpdatedAt         time.Time       `json:"updated_at"`
+		ID               uuid.UUID       `json:"id"`
+		UserID           string          `json:"user_id"`
+		ProviderID       uuid.UUID       `json:"provider_id"`
+		JobID            *string         `json:"job_id,omitempty"`
+		Status           string          `json:"status"`
+		GPUModel         string          `json:"gpu_model"`
+		AllocatedVRAM    uint64          `json:"allocated_vram_mb"`
+		TotalVRAM        uint64          `json:"total_vram_mb"`
+		VRAMPercentage   decimal.Decimal `json:"vram_percentage"`
+		HourlyRate       decimal.Decimal `json:"hourly_rate"`
+		VRAMRate         decimal.Decimal `json:"vram_rate"`
+		PowerRate        decimal.Decimal `json:"power_rate"`
+		PlatformFeeRate  decimal.Decimal `json:"platform_fee_rate"`
+		EstimatedPowerW  uint32          `json:"estimated_power_w"`
+		ActualPowerW     *uint32         `json:"actual_power_w,omitempty"`
+		StartedAt        time.Time       `json:"started_at"`
+		EndedAt          *time.Time      `json:"ended_at,omitempty"`
+		LastBilledAt     time.Time       `json:"last_billed_at"`
+		TotalCost        decimal.Decimal `json:"total_cost"`
+		PlatformFee      decimal.Decimal `json:"platform_fee"`
+		ProviderEarnings decimal.Decimal `json:"provider_earnings"`
+		CreatedAt        time.Time       `json:"created_at"`
+		UpdatedAt        time.Time       `json:"updated_at"`
 	} `json:"session"`
 	CurrentCost         decimal.Decimal `json:"current_cost"`
 	EstimatedHourlyCost decimal.Decimal `json:"estimated_hourly_cost"`
@@ -118,7 +118,7 @@ func (c *Client) SendUsageUpdate(ctx context.Context, req *UsageUpdateRequest) e
 // GetCurrentUsage gets current usage information for a session
 func (c *Client) GetCurrentUsage(ctx context.Context, sessionID uuid.UUID) (*SessionResponse, error) {
 	url := fmt.Sprintf("%s/api/v1/billing/current-usage/%s", c.baseURL, sessionID.String())
-	
+
 	httpReq, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -197,65 +197,47 @@ func (c *Client) getGPUMetrics(gpuID string) (*GPUMetrics, error) {
 	// This would integrate with the GPU detector
 	// For now, return mock data
 	return &GPUMetrics{
-		Utilization:     75,
-		VRAMUtilization: 60,
-		PowerDraw:       250,
-		Temperature:     65,
+		Utilization:     75,  // mock data
+		VRAMUtilization: 50,  // mock data
+		PowerDraw:       150, // mock data
+		Temperature:     65,  // mock data
 	}, nil
 }
 
-// StartSession notifies the billing service that a session has started
-func (c *Client) StartSession(ctx context.Context, sessionID uuid.UUID, jobID string) error {
-	c.logger.Info("Notifying billing service of session start",
-		zap.String("session_id", sessionID.String()),
-		zap.String("job_id", jobID),
+// StartBilling informs the billing service that a task's billable period has begun.
+func (c *Client) StartBilling(ctx context.Context, jobID string, userID string, gpuInstanceID string, pricePerHour float64) error {
+	c.logger.Info("StartBilling called",
+		zap.String("jobID", jobID),
+		zap.String("userID", userID),
+		zap.String("gpuInstanceID", gpuInstanceID),
+		zap.Float64("pricePerHour", pricePerHour),
 	)
-
-	// The session would already be created by the scheduler
-	// This is just to confirm the session is active on the provider side
-	return nil
+	// TODO: This method needs to be implemented to correctly interact with the billing service API.
+	// It might involve creating or activating a session, or directly logging the start of a billable event.
+	// The current parameters (jobID, userID, gpuInstanceID, pricePerHour) should be used.
+	// For now, this is a stub.
+	c.logger.Warn("StartBilling is currently a stub and does not actually initiate a billing event with the service.")
+	return nil // Placeholder
 }
 
-// EndSession notifies the billing service that a session has ended
-func (c *Client) EndSession(ctx context.Context, sessionID uuid.UUID, reason string) error {
-	c.logger.Info("Notifying billing service of session end",
-		zap.String("session_id", sessionID.String()),
-		zap.String("reason", reason),
+// StopBilling informs the billing service that a task's billable period has ended.
+func (c *Client) StopBilling(ctx context.Context, jobID string, userID string, durationHours float64) error {
+	c.logger.Info("StopBilling called",
+		zap.String("jobID", jobID),
+		zap.String("userID", userID),
+		zap.Float64("durationHours", durationHours),
 	)
-
-	endReq := map[string]interface{}{
-		"session_id": sessionID,
-		"reason":     reason,
-	}
-
-	jsonData, err := json.Marshal(endReq)
-	if err != nil {
-		return fmt.Errorf("failed to marshal end session request: %w", err)
-	}
-
-	url := fmt.Sprintf("%s/api/v1/billing/end-session", c.baseURL)
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.httpClient.Do(httpReq)
-	if err != nil {
-		return fmt.Errorf("failed to end session: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
-		return fmt.Errorf("billing service returned status %d", resp.StatusCode)
-	}
-
-	c.logger.Info("Session end notification sent successfully")
-	return nil
+	// TODO: This method needs to be implemented to correctly interact with the billing service API.
+	// It might involve ending a session, or logging the end of a billable event with its duration.
+	// The current parameters (jobID, userID, durationHours) should be used.
+	// For now, this is a stub.
+	c.logger.Warn("StopBilling is currently a stub and does not actually terminate a billing event with the service correctly.")
+	return nil // Placeholder
 }
 
-// CheckSessionStatus checks if a session is still active and funded
+// CheckSessionStatus checks if a session is still considered active by the billing service.
+// This might be useful for the daemon to periodically verify if it should continue processing a task.
+// Returns true if active, false if not active or error.
 func (c *Client) CheckSessionStatus(ctx context.Context, sessionID uuid.UUID) (bool, error) {
 	usage, err := c.GetCurrentUsage(ctx, sessionID)
 	if err != nil {
@@ -264,7 +246,7 @@ func (c *Client) CheckSessionStatus(ctx context.Context, sessionID uuid.UUID) (b
 
 	// Check if session is still active and has remaining balance
 	isActive := usage.Session.Status == "active" && usage.RemainingBalance.GreaterThan(decimal.Zero)
-	
+
 	if !isActive {
 		c.logger.Warn("Session is no longer active or funded",
 			zap.String("session_id", sessionID.String()),

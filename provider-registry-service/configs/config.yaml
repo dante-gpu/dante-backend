@@ -3,10 +3,10 @@ log_level: "info"
 request_timeout: 30s # Default request timeout for HTTP server
 
 # Database Configuration
-database_url: "postgresql://user:password@localhost:5432/dante_registry?sslmode=disable" # TODO: Update with your actual DB credentials and name
+database_url: "postgresql://dante_user:dante_password@postgres:5432/dante_registry?sslmode=disable" # Updated for Docker and credentials
 
 # Consul Configuration
-consul_address: "localhost:8500"
+consul_address: "consul:8500" # Updated for Docker
 service_name: "provider-registry"
 service_id_prefix: "provider-reg-"
 service_tags:

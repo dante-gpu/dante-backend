@@ -13,7 +13,7 @@ log_level: "info" # debug, info, warn, error
 
 # Database Configuration
 database:
-  url: "postgres://dante_billing:secure_password@localhost:5432/dante_billing?sslmode=require"
+  url: "postgresql://dante_user:dante_password@postgres:5432/dante_billing?sslmode=disable"
   max_connections: 25
   min_connections: 5
   connection_timeout: "30s"
@@ -87,7 +87,7 @@ pricing:
 
 # NATS Configuration
 nats:
-  address: "nats://localhost:4222"
+  address: "nats://nats:4222"
   cluster_id: "dante-cluster"
   client_id: "billing-payment-service"
   
@@ -107,7 +107,7 @@ nats:
 
 # Consul Configuration
 consul:
-  address: "localhost:8500"
+  address: "consul:8500"
   service_name: "billing-payment-service"
   service_id: "billing-payment-service-1"
   health_check_interval: "10s"

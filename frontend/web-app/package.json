@@ -21,6 +21,7 @@
     "@solana/wallet-adapter-react": "^0.15.38",
     "@solana/wallet-adapter-react-ui": "^0.9.38",
     "@solana/web3.js": "^1.98.2",
+    "@types/recharts": "^2.0.1",
     "axios": "^1.6.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
@@ -34,7 +35,7 @@
     "react-dom": "^18.2.0",
     "react-hook-form": "^7.48.0",
     "react-hot-toast": "^2.4.0",
-    "recharts": "^2.8.0",
+    "recharts": "^2.15.3",
     "sonner": "^1.2.0",
     "tailwind-merge": "^2.6.0",
     "zod": "^3.22.0"

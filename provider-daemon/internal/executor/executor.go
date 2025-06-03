@@ -15,8 +15,11 @@ import (
 	"github.com/dante-gpu/dante-backend/provider-daemon/internal/billing"
 	"github.com/dante-gpu/dante-backend/provider-daemon/internal/gpu"
 	"github.com/dante-gpu/dante-backend/provider-daemon/internal/models"
-	"github.com/docker/docker/api/types"
+
+	// "github.com/docker/docker/api/types" // Commented out if not directly used
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/image"   // Ensured for image.PullOptions
+	"github.com/docker/docker/api/types/network" // If network.NetworkingConfig is used
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/google/uuid"
@@ -244,18 +247,16 @@ func (de *DockerExecutor) Execute(ctx context.Context, task *models.Task, worksp
 	jobLogger.Info("Pulling Docker image if not present", zap.String("image", imageName))
 	pullCtx, pullCancel := context.WithTimeout(ctx, 5*time.Minute) // Timeout for image pull
 	defer pullCancel()
-	out, err := de.cli.ImagePull(pullCtx, imageName, types.ImagePullOptions{})
+
+	imgPullOut, err := de.cli.ImagePull(pullCtx, imageName, image.PullOptions{}) // Corrected
 	if err != nil {
 		jobLogger.Error("Failed to pull Docker image", zap.String("image", imageName), zap.Error(err))
 		return ExecutionResult{Error: fmt.Errorf("failed to pull image %s: %w", imageName, err), ExitCode: -1}
 	}
-	defer out.Close()
-	// Log image pull output (optional, can be verbose)
-	// For simplicity, we're not streaming the pull output to job logs here, but one could use io.Copy to a buffer.
-	// Example: io.Copy(io.Discard, out) // Consume output to ensure pull completes
-	if _, err = io.Copy(io.Discard, out); err != nil {
-		jobLogger.Warn("Error consuming image pull output, pull might be incomplete", zap.Error(err))
-		// Potentially return error here if this is critical
+	defer imgPullOut.Close()
+	// It's good practice to consume the output of ImagePull
+	if _, err = io.Copy(io.Discard, imgPullOut); err != nil {
+		jobLogger.Warn("Error consuming image pull output", zap.Error(err))
 	}
 	jobLogger.Info("Image pull process completed (or image was already present)", zap.String("image", imageName))
 
@@ -334,7 +335,8 @@ func (de *DockerExecutor) Execute(ctx context.Context, task *models.Task, worksp
 	// --- Create Container ---
 	containerName := fmt.Sprintf("dante-task-%s-%s", task.JobID, time.Now().Format("20060102150405"))
 	jobLogger.Info("Creating Docker container", zap.String("name", containerName), zap.Any("config", containerConfig), zap.Any("host_config", hostConfig))
-	resp, err := de.cli.ContainerCreate(pullCtx, containerConfig, hostConfig, nil, nil, containerName) // Use pullCtx timeout for create too
+	// Assuming network.NetworkingConfig{} is intended if no specific network config.
+	resp, err := de.cli.ContainerCreate(pullCtx, containerConfig, hostConfig, &network.NetworkingConfig{}, nil, containerName) // Use pullCtx timeout for create too
 	if err != nil {
 		jobLogger.Error("Failed to create Docker container", zap.Error(err))
 		return ExecutionResult{Error: fmt.Errorf("failed to create container: %w", err), ExitCode: -1}
@@ -346,16 +348,30 @@ func (de *DockerExecutor) Execute(ctx context.Context, task *models.Task, worksp
 		jobLogger.Info("Attempting to remove container", zap.String("id", resp.ID))
 		removeCtx, removeCancel := context.WithTimeout(context.Background(), 30*time.Second) // Context for removal
 		defer removeCancel()
-		if err := de.cli.ContainerRemove(removeCtx, resp.ID, types.ContainerRemoveOptions{Force: true, RemoveVolumes: false}); err != nil {
+		// Use container.RemoveOptions for ContainerRemove
+		if err := de.cli.ContainerRemove(removeCtx, resp.ID, container.RemoveOptions{Force: true, RemoveVolumes: false}); err != nil {
 			jobLogger.Error("Failed to remove container", zap.String("id", resp.ID), zap.Error(err))
 		} else {
 			jobLogger.Info("Container removed successfully", zap.String("id", resp.ID))
 		}
 	}()
 
+	// Instrument for billing (after successful creation)
+	if de.billingClient != nil && task.SelectedGPU != nil {
+		errBill := de.billingClient.StartBilling(ctx, task.JobID, task.UserID, task.SelectedGPU.InstanceID, task.SelectedGPU.PricePerHour) // Use ctx from Execute
+		if errBill != nil {
+			jobLogger.Error("Failed to start billing for job", zap.String("job_id", task.JobID), zap.Error(errBill))
+			// Decide if this is a fatal error for the task execution
+		}
+	} else if task.SelectedGPU == nil {
+		jobLogger.Warn("SelectedGPU info not available in task, skipping StartBilling call.", zap.String("job_id", task.JobID))
+	}
+
 	// --- Start Container ---
+	containerStartTime := time.Now() // Define containerStartTime before starting the container
 	jobLogger.Info("Starting container", zap.String("id", resp.ID))
-	if err := de.cli.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{}); err != nil {
+	// Use container.StartOptions for ContainerStart
+	if err := de.cli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
 		jobLogger.Error("Failed to start Docker container", zap.String("id", resp.ID), zap.Error(err))
 		return ExecutionResult{Error: fmt.Errorf("failed to start container %s: %w", resp.ID, err), ExitCode: -1}
 	}
@@ -396,7 +412,7 @@ func (de *DockerExecutor) Execute(ctx context.Context, task *models.Task, worksp
 	select {
 	case err := <-errCh:
 		if err != nil {
-			jobLogger.Error("Error waiting for container completion", zap.String("id", resp.ID), zap.Error(err))
+			jobLogger.Error("Error waiting for container", zap.String("id", resp.ID), zap.Error(err))
 			waitError = fmt.Errorf("error waiting for container %s: %w", resp.ID, err)
 			if waitCtx.Err() == context.DeadlineExceeded {
 				jobLogger.Warn("Container execution timed out", zap.String("id", resp.ID))
@@ -405,7 +421,8 @@ func (de *DockerExecutor) Execute(ctx context.Context, task *models.Task, worksp
 				// Attempt to stop the container if it timed out
 				stopCtx, stopCancel := context.WithTimeout(context.Background(), 30*time.Second)
 				defer stopCancel()
-				if stopErr := de.cli.ContainerStop(stopCtx, resp.ID, nil); stopErr != nil {
+				// Use container.StopOptions{} for ContainerStop instead of nil
+				if stopErr := de.cli.ContainerStop(stopCtx, resp.ID, container.StopOptions{}); stopErr != nil {
 					jobLogger.Error("Failed to stop timed-out container", zap.String("id", resp.ID), zap.Error(stopErr))
 				}
 			}
@@ -416,26 +433,27 @@ func (de *DockerExecutor) Execute(ctx context.Context, task *models.Task, worksp
 			jobLogger.Warn("Container exited with an error status message", zap.String("id", resp.ID), zap.String("error_msg", status.Error.Message))
 			// waitError might be set based on this, or from statusCode if non-zero
 		}
-		jobLogger.Info("Container exited", zap.String("id", resp.ID), zap.Int64("status_code", statusCode))
+		jobLogger.Info("Container finished with status code", zap.Int64("status_code", status.StatusCode), zap.String("id", resp.ID))
 	}
 
 	// --- Get Logs ---
 	logCtx, logCancel := context.WithTimeout(context.Background(), 1*time.Minute) // Context for log retrieval
 	defer logCancel()
-	logOptions := types.ContainerLogsOptions{ShowStdout: true, ShowStderr: true, Timestamps: false, Follow: false}
-	logReader, err := de.cli.ContainerLogs(logCtx, resp.ID, logOptions)
-	var logStdout, logStderr bytes.Buffer
-	if err != nil {
-		jobLogger.Error("Failed to get container logs", zap.String("id", resp.ID), zap.Error(err))
-		// Continue, but logs will be missing
+	// Use container.LogsOptions for ContainerLogs
+	logOptions := container.LogsOptions{ShowStdout: true, ShowStderr: true, Timestamps: false, Follow: false} // Ensure Timestamps and Follow are as intended
+	logReader, errLog := de.cli.ContainerLogs(logCtx, resp.ID, logOptions)
+	var logStdout, logStderr bytes.Buffer // Define these to store log output
+
+	if errLog != nil {
+		jobLogger.Error("Failed to get Docker container logs", zap.String("id", resp.ID), zap.Error(errLog))
+		// Do not return immediately, proceed to get exit code and attempt cleanup
 	} else {
 		defer logReader.Close()
-		// Demultiplex the TTY stream if Tty=false was used (which it is)
-		_, err = stdcopy.StdCopy(&logStdout, &logStderr, logReader)
-		if err != nil {
-			jobLogger.Error("Failed to demultiplex container logs", zap.String("id", resp.ID), zap.Error(err))
+		// Demultiplex the TTY stream if Tty=false was used (which it is by default in containerConfig)
+		_, errCP := stdcopy.StdCopy(&logStdout, &logStderr, logReader)
+		if errCP != nil {
+			jobLogger.Warn("Error demultiplexing Docker logs", zap.String("id", resp.ID), zap.Error(errCP))
 		}
-		jobLogger.Debug("Container logs retrieved", zap.Int("stdout_len", logStdout.Len()), zap.Int("stderr_len", logStderr.Len()))
 	}
 
 	// --- Inspect Container for Final Exit Code if not already set by timeout logic ---
@@ -465,6 +483,18 @@ func (de *DockerExecutor) Execute(ctx context.Context, task *models.Task, worksp
 		finalResult.Error = waitError
 	} else if statusCode != 0 {
 		finalResult.Error = fmt.Errorf("container %s exited with code %d", resp.ID, statusCode)
+	}
+
+	// Stop billing
+	if de.billingClient != nil {
+		actualDuration := time.Since(containerStartTime)
+		errBill := de.billingClient.StopBilling(ctx, task.JobID, task.UserID, actualDuration.Seconds()/3600) // Use ctx from Execute
+		if errBill != nil {
+			jobLogger.Error("Failed to stop billing for job", zap.String("job_id", task.JobID), zap.Error(errBill))
+		}
+		jobLogger.Info("Billing stopped for job", zap.String("job_id", task.JobID), zap.Float64("billed_duration_hours", actualDuration.Seconds()/3600))
+	} else {
+		jobLogger.Info("Billing client not available, skipping StopBilling call.", zap.String("job_id", task.JobID))
 	}
 
 	jobLogger.Info("Docker execution finished",

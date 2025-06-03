@@ -41,6 +41,14 @@ type Task struct {
 	// Dispatch details
 	DispatchedAt time.Time `json:"dispatched_at"` // Timestamp when the scheduler dispatched this task
 	// ExecutionTimeout time.Duration `json:"execution_timeout,omitempty"` // Max time daemon should run this task
+	SelectedGPU *SelectedGPUInfo `json:"selected_gpu,omitempty"` // Information about the specific GPU instance selected for this task
+}
+
+// SelectedGPUInfo holds details about the GPU instance assigned to a task.
+type SelectedGPUInfo struct {
+	InstanceID   string  `json:"instance_id"`    // Unique identifier for the GPU instance
+	PricePerHour float64 `json:"price_per_hour"` // Billing price per hour for this GPU instance
+	// Potentially other details like VRAM, Model, etc., if needed by the daemon directly
 }
 
 // Example JobParams structure for a script execution task:
