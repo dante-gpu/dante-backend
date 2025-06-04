@@ -1,0 +1,84 @@
+{
+  "build": {
+    "beforeDevCommand": "npm run dev --prefix ../",
+    "beforeBuildCommand": "npm run build --prefix ../",
+    "devPath": "http://localhost:5173",
+    "distDir": "../dist",
+    "withGlobalTauri": true
+  },
+  "package": {
+    "productName": "Dante Provider GUI",
+    "version": "0.1.0"
+  },
+  "tauri": {
+    "allowlist": {
+      "all": false,
+      "shell": {
+        "all": false,
+        "open": true
+      },
+      "fs": {
+        "all": true,
+        "scope": ["$APP/*", "$RESOURCE/*"]
+      },
+      "path": {
+        "all": true
+      },
+      "process": {
+        "all": true,
+        "exit": true,
+        "relaunch": true,
+        "command": "provider-daemon",
+        "sidecar": true
+      },
+      "http": {
+        "all": true,
+        "scope": ["http://localhost:*", "https://localhost:*"]
+      },
+      "notification": {
+        "all": true
+      }
+    },
+    "bundle": {
+      "active": true,
+      "targets": "all",
+      "identifier": "com.dantegpu.provider.gui",
+      "icon": [
+        "icons/32x32.png",
+        "icons/128x128.png",
+        "icons/128x128@2x.png",
+        "icons/icon.icns",
+        "icons/icon.ico"
+      ],
+      "resources": ["sidecars/provider-daemon-*"],
+      "externalBin": ["sidecars/provider-daemon-*"]
+    },
+    "security": {
+      "csp": null,
+      "dangerousRemoteDomainIpcAccess": [
+        {
+          "domain": "localhost",
+          "windows": ["main"],
+          "enableTauriAPI": true
+        }
+      ]
+    },
+    "windows": [
+      {
+        "fullscreen": false,
+        "resizable": true,
+        "title": "Dante GPU Provider",
+        "width": 1024,
+        "height": 768,
+        "minWidth": 800,
+        "minHeight": 600,
+        "label": "main"
+      }
+    ],
+    "systemTray": {
+      "iconPath": "icons/icon.png",
+      "iconAsTemplate": true
+    },
+    "macOSPrivateApi": true
+  }
+} 

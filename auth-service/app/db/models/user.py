@@ -1,8 +1,8 @@
-from sqlalchemy import Column, String, Boolean, DateTime, func, UUID as pgUUID, Float
-from sqlalchemy.orm import relationship
 import uuid
-
-from app.db.base_class import Base # I need to import the Declarative Base
+from sqlalchemy import Column, String, Boolean, DateTime, func, UUID as pgUUID
+from sqlalchemy.orm import relationship
+from app.db.base_class import Base
+from .rbac import user_roles_table # Import the association table
 
 class User(Base):
     # I should define the table name.
@@ -10,24 +10,25 @@ class User(Base):
 
     # I need to define the columns for the users table.
     id = Column(pgUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    email = Column(String, unique=True, index=True, nullable=False)
-    username = Column(String, unique=True, index=True, nullable=False)
-    hashed_password = Column(String, nullable=False)
-    role = Column(String, nullable=False, default="user", index=True)
-    is_active = Column(Boolean(), default=True)
+    email = Column(String(255), unique=True, index=True, nullable=False)
+    username = Column(String(100), unique=True, index=True, nullable=False)
+    hashed_password = Column(String(255), nullable=False)
+    is_active = Column(Boolean(), default=True, nullable=False)
+    is_verified = Column(Boolean(), default=False, nullable=False) # New: for email verification
+    # 'role' string column is removed. Roles are now managed via user_roles_table.
 
-    # Wallet and Financials
-    wallet_address = Column(String, unique=True, index=True, nullable=True) # Solana wallet address
-    balance_dgpu = Column(Float, nullable=False, default=0.0)
-    total_spent = Column(Float, nullable=False, default=0.0)
-    total_earned = Column(Float, nullable=False, default=0.0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now(), nullable=False)
+    last_login_at = Column(DateTime(timezone=True), nullable=True) # New
 
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
+    # Relationships
+    profile = relationship("UserProfile", back_populates="user", uselist=False, cascade="all, delete-orphan", lazy="selectin")
+    roles = relationship("Role", secondary=user_roles_table, back_populates="users", lazy="selectin")
+    api_keys = relationship("UserApiKey", back_populates="user", cascade="all, delete-orphan", lazy="noload")
+    # login_history can be queried separately if needed, not always loaded with user.
 
-    # I could add relationships here later if needed, e.g., to roles or profiles.
-    # items = relationship("Item", back_populates="owner")
+    # Financial fields like wallet_address, balance_dgpu, etc., are REMOVED.
 
     def __repr__(self):
         # I should add a representation for easier debugging.
-        return f"<User(id={self.id}, email='{self.email}', username='{self.username}', role='{self.role}')>" 
+        return f"<User(id={self.id}, email='{self.email}', username='{self.username}')>" 
