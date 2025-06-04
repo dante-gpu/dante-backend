@@ -550,11 +550,11 @@ async def startup_event():
                 demo_create = UserCreate(
                     username="demo",
                     email="demo@dantegpu.com",
-                    password="demo123",
+                    password="demo12345",
                     role="user"
                 )
                 create_user(db, user_in=demo_create)
-                print("✅ Demo user created: demo / demo123")
+                print("✅ Demo user created: demo / demo12345")
                 
         finally:
             db.close()

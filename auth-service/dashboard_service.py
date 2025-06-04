@@ -28,6 +28,12 @@ engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
+# Security constants and Pydantic models for JWT and Bearer token
+# These MUST match the ones in simple_auth.py for token validation to work
+SECRET_KEY = "dante_super_secret_jwt_key_2024_production_ready"
+ALGORITHM = "HS256"
+security = HTTPBearer()
+
 # Status Enums
 class JobStatus(str, Enum):
     PENDING = "pending"
@@ -53,6 +59,62 @@ class ProviderStatus(str, Enum):
     OFFLINE = "offline"
     BUSY = "busy"
     MAINTENANCE = "maintenance"
+
+# Pydantic Models for API Responses
+class DashboardStatsResponse(BaseModel):
+    totalProviders: int
+    availableGPUs: int
+    activeJobs: int
+    totalEarnings: str
+    walletBalance: str
+    totalSpent: str
+    jobsCompleted: int
+    computeHours: float
+
+class GPUMetricsResponse(BaseModel):
+    utilization: float
+    temperature: float
+    powerDraw: float
+    memoryUsage: float
+    vramTotal: int
+    vramUsed: int
+    clockGraphics: int
+    clockMemory: int
+    fanSpeed: float
+    isHealthy: bool
+
+class JobResponse(BaseModel):
+    id: str
+    name: str
+    provider: str
+    status: str
+    startTime: str
+    duration: str
+    cost: str
+    gpuModel: str
+    progress: float
+    description: Optional[str] = None
+
+class TransactionResponse(BaseModel):
+    id: str
+    type: str
+    amount: str
+    description: str
+    timestamp: str
+    status: str
+    tx_hash: Optional[str] = None
+
+class ProviderResponse(BaseModel):
+    id: str
+    name: str
+    location: str
+    status: str
+    hourlyRate: float
+    rating: float
+    totalJobs: int
+    successRate: float
+    gpus: List[Dict[str, Any]]
+    lastSeen: str
 
 # Database Models
 class User(Base):
@@ -199,67 +261,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Security
-security = HTTPBearer()
-SECRET_KEY = "dante_super_secret_jwt_key_2024_production_ready"
-ALGORITHM = "HS256"
-
-# Pydantic Models
-class DashboardStatsResponse(BaseModel):
-    totalProviders: int
-    availableGPUs: int
-    activeJobs: int
-    totalEarnings: str
-    walletBalance: str
-    totalSpent: str
-    jobsCompleted: int
-    computeHours: float
-
-class GPUMetricsResponse(BaseModel):
-    utilization: float
-    temperature: float
-    powerDraw: float
-    memoryUsage: float
-    vramTotal: int
-    vramUsed: int
-    clockGraphics: int
-    clockMemory: int
-    fanSpeed: float
-    isHealthy: bool
-
-class JobResponse(BaseModel):
-    id: str
-    name: str
-    provider: str
-    status: str
-    startTime: str
-    duration: str
-    cost: str
-    gpuModel: str
-    progress: float
-    description: Optional[str] = None
-
-class TransactionResponse(BaseModel):
-    id: str
-    type: str
-    amount: str
-    description: str
-    timestamp: str
-    status: str
-    tx_hash: Optional[str] = None
-
-class ProviderResponse(BaseModel):
-    id: str
-    name: str
-    location: str
-    status: str
-    hourlyRate: float
-    rating: float
-    totalJobs: int
-    successRate: float
-    gpus: List[Dict[str, Any]]
-    lastSeen: str
 
 # Database dependency
 def get_db():
