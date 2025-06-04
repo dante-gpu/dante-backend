@@ -3,11 +3,11 @@ const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
   experimental: {
-    esmExternals: false,
+    esmExternals: true,
   },
   
-  // Production optimizations
-  output: 'standalone',
+  // Remove output: 'standalone' for development
+  // output: 'standalone',
   
   // Asset configuration
   assetPrefix: '',
@@ -76,9 +76,10 @@ const nextConfig = {
     ];
   },
   
-  // Webpack configuration for optimization
-  webpack: (config, { dev, isServer }) => {
-    if (!dev && !isServer) {
+  // Simplified webpack configuration
+  webpack: (config, { dev }) => {
+    // Only apply optimizations in production
+    if (!dev) {
       config.optimization.splitChunks = {
         chunks: 'all',
         cacheGroups: {

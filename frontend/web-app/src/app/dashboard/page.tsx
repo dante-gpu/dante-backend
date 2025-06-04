@@ -49,7 +49,8 @@ import {
   Minus,
   Home,
   Database,
-  Network
+  Network,
+  Computer
 } from 'lucide-react';
 import { dashboardService, gpuService } from '@/lib/api';
 

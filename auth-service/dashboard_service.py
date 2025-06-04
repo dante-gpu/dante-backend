@@ -23,7 +23,7 @@ from sqlalchemy.sql import text
 import os
 
 # Database Setup
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg2://dante_user:dante_secure_pass_123@localhost:5432/dante_auth")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg2://dante_user:dante_password@localhost:5432/dante_auth")
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
@@ -425,9 +425,9 @@ async def get_dashboard_stats(current_user: User = Depends(get_current_user), db
         totalProviders=total_providers,
         availableGPUs=available_gpus,
         activeJobs=active_jobs,
-        totalEarnings=f"{current_user.total_earned:.2f}",
-        walletBalance=f"{current_user.balance_dgpu:.2f}",
-        totalSpent=f"{current_user.total_spent:.2f}",
+        totalEarnings=f"{current_user.total_earned or 0.0:.2f}",
+        walletBalance=f"{current_user.balance_dgpu or 0.0:.2f}",
+        totalSpent=f"{current_user.total_spent or 0.0:.2f}",
         jobsCompleted=completed_jobs,
         computeHours=compute_hours
     )
@@ -708,7 +708,7 @@ async def root():
 
 if __name__ == "__main__":
     print("🚀 Starting DanteGPU Dashboard Service...")
-    print("🔗 Database:", DATABASE_URL.replace("dante_secure_pass_123", "***"))
+    print("🔗 Database:", DATABASE_URL.replace("dante_password", "***"))
     print("🌐 Server: http://localhost:8091")
     print("📖 API Docs: http://localhost:8091/docs")
     

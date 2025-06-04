@@ -19,7 +19,7 @@ import uuid
 import uvicorn
 
 # Database Setup
-DATABASE_URL = "postgresql+psycopg2://dante_user:dante_secure_pass_123@localhost:5432/dante_auth"
+DATABASE_URL = "postgresql+psycopg2://dante_user:dante_password@localhost:5432/dante_auth"
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
@@ -255,7 +255,7 @@ async def root():
 
 if __name__ == "__main__":
     print("🚀 Starting DanteGPU Authentication Service...")
-    print("🔗 Database:", DATABASE_URL.replace("dante_secure_pass_123", "***"))
+    print("🔗 Database:", DATABASE_URL.replace("dante_password", "***"))
     print("🌐 Server: http://localhost:8090")
     print("📖 API Docs: http://localhost:8090/docs")
     

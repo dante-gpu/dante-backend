@@ -203,11 +203,14 @@ services:
     ports:
       - "8092:8092"
     environment:
+      DATABASE_URL: "postgresql://dante_user:dante_password@postgres:5432/dante_auth?sslmode=disable"
       PROVIDER_REGISTRY_URL: "http://provider-registry-service:8081"
       NATS_URL: "nats://nats:4222"
       CONSUL_ADDRESS: "consul:8500"
       LOG_LEVEL: "info"
     depends_on:
+      postgres:
+        condition: service_healthy
       nats:
         condition: service_healthy
       consul:
