@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/dante-gpu/dante-backend/provider-daemon/internal/billing"
+	"github.com/dante-gpu/dante-backend/provider-daemon/internal/config"
 	"github.com/dante-gpu/dante-backend/provider-daemon/internal/gpu"
 	"github.com/dante-gpu/dante-backend/provider-daemon/internal/models"
 
@@ -149,19 +150,35 @@ type DockerExecutor struct {
 	logger        *zap.Logger
 	billingClient *billing.Client
 	gpuDetector   *gpu.Detector
+	// execCfg       *config.ExecutorSettings // Optionally store if needed by other methods
 }
 
 // NewDockerExecutor creates a new DockerExecutor.
-// It initializes a Docker client from environment variables.
-func NewDockerExecutor(logger *zap.Logger, billingClient *billing.Client, gpuDetector *gpu.Detector) (*DockerExecutor, error) {
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+// It initializes a Docker client, preferring execCfg.DockerEndpoint if provided.
+func NewDockerExecutor(execCfg *config.ExecutorSettings, logger *zap.Logger, billingClient *billing.Client, gpuDetector *gpu.Detector) (*DockerExecutor, error) {
+	var cliOpts []client.Opt
+	if execCfg != nil && execCfg.DockerEndpoint != "" {
+		logger.Info("Using configured Docker endpoint", zap.String("endpoint", execCfg.DockerEndpoint))
+		cliOpts = append(cliOpts, client.WithHost(execCfg.DockerEndpoint))
+	} else {
+		// If no specific endpoint in config, use Docker's default (from environment or system default)
+		logger.Info("Using Docker client with default environment settings (e.g., DOCKER_HOST or default socket).")
+		cliOpts = append(cliOpts, client.FromEnv)
+	}
+	cliOpts = append(cliOpts, client.WithAPIVersionNegotiation())
+
+	cli, err := client.NewClientWithOpts(cliOpts...)
 	if err != nil {
 		logger.Error("Failed to create Docker client", zap.Error(err))
 		return nil, fmt.Errorf("failed to create Docker client: %w", err)
 	}
+
 	// Ping the Docker daemon to ensure connectivity
-	if _, err := cli.Ping(context.Background()); err != nil {
+	pingCtx, pingCancel := context.WithTimeout(context.Background(), 5*time.Second) // Short timeout for ping
+	defer pingCancel()
+	if _, err := cli.Ping(pingCtx); err != nil {
 		logger.Error("Failed to ping Docker daemon", zap.Error(err))
+		cli.Close() // Close the client if ping fails
 		return nil, fmt.Errorf("failed to ping Docker daemon: %w", err)
 	}
 	logger.Info("Docker client initialized and connected to Docker daemon")
@@ -170,6 +187,7 @@ func NewDockerExecutor(logger *zap.Logger, billingClient *billing.Client, gpuDet
 		logger:        logger,
 		billingClient: billingClient,
 		gpuDetector:   gpuDetector,
+		// execCfg: execCfg, // Store if other methods need it directly
 	}, nil
 }
 

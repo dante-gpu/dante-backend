@@ -83,37 +83,34 @@ func main() {
 	)
 
 	// Initialize components for daemon mode
-	gpuDetector := gpu.NewDetector(logger)
+	gpuDetector := gpu.NewDetector(&cfg.GPUDetectorConfig, logger)
 	// go gpuDetector.StartMonitoring() // Commented out: StartMonitoring not found on current Detector struct
 	// defer gpuDetector.StopMonitoring() // Commented out: StopMonitoring not found on current Detector struct
 
 	billingClient := billing.NewClient(&cfg.BillingClientConfig, logger)
 
-	// Initialize Executor
-	// TODO: Allow selection of executor type (docker, script) based on config
-	var taskExecutor executor.Executor
-	dockerExec, err := executor.NewDockerExecutor(logger, billingClient, gpuDetector)
+	// Initialize Executors
+	scriptExec := executor.NewScriptExecutor()
+	dockerExec, err := executor.NewDockerExecutor(&cfg.ExecutorConfig, logger, billingClient, gpuDetector)
 	if err != nil {
-		logger.Warn("Failed to initialize Docker executor, falling back to script executor", zap.Error(err))
-		// Fallback to script executor
-		scriptExec := executor.NewScriptExecutor() // Corrected: No arguments, one return value
-		// if scriptErr != nil { // NewScriptExecutor now returns no error
-		// 	logger.Fatal("Failed to initialize any task executor", zap.Error(scriptErr))
-		// }
-		taskExecutor = scriptExec
-	} else {
-		taskExecutor = dockerExec
+		// Log the error but continue, dockerExec will be nil.
+		// The TaskHandler will then only be able to use scriptExec if a docker task comes.
+		// Or, depending on policy, we might want to Fatal if Docker is the primary expected executor.
+		logger.Warn("Failed to initialize Docker executor. Docker-based tasks may fail.", zap.Error(err))
+		dockerExec = nil // Ensure it's nil if initialization failed
 	}
 
-	// Initialize Task Handler
-	// The linter errors indicate a mismatch in types/order for NewHandler.
-	// Will need to check the signature of tasks.NewHandler.
-	taskHandler := tasks.NewHandler(cfg, logger, taskExecutor, gpuDetector, billingClient)
+	// Initialize Task Handler - pass nil for NatsStatusPublisher initially
+	taskHandler := tasks.NewHandler(cfg, logger, nil, scriptExec, dockerExec)
 
+	// Initialize NATS Client (depends on TaskHandler for message handling)
 	natsClient, err := nats.NewClient(cfg, logger, taskHandler.HandleTask)
 	if err != nil {
 		logger.Fatal("Failed to initialize NATS client", zap.Error(err))
 	}
+
+	// Set the NATS client as the reporter for the task handler
+	taskHandler.SetReporter(natsClient)
 
 	if err := natsClient.StartListening(); err != nil {
 		logger.Fatal("Failed to start NATS listener", zap.Error(err))
@@ -131,7 +128,7 @@ func main() {
 
 func handleGetGpusJSON(cfg *config.Config, logger *zap.Logger) {
 	logger.Info("CLI command: --get-gpus-json")
-	gpuDetector := gpu.NewDetector(logger)
+	gpuDetector := gpu.NewDetector(&cfg.GPUDetectorConfig, logger)
 
 	detectedSystemGPUs, err := gpuDetector.DetectGPUsOnce()
 	if err != nil {
@@ -187,10 +184,10 @@ func handleGetGpusJSON(cfg *config.Config, logger *zap.Logger) {
 func handleGetSettingsJSON(cfg *config.Config, logger *zap.Logger) {
 	logger.Info("CLI command: --get-settings-json")
 	settings := cli_models.CliProviderSettings{
-		// DefaultHourlyRateDGPU: float32(cfg.DefaultHourlyRateDGPU), // Commented out: field potentially missing from current config.Config
-		PreferredCurrency: cfg.PreferredCurrency, // This one should exist
-		// MinJobDurationMinutes: cfg.MinJobDurationMinutes, // Commented out: field potentially missing from current config.Config
-		MaxConcurrentJobs: cfg.MaxConcurrentJobs, // This one should exist
+		DefaultHourlyRateDGPU: float32(cfg.DefaultHourlyRateDGPU),
+		PreferredCurrency:     cfg.PreferredCurrency,
+		MinJobDurationMinutes: cfg.MinJobDurationMinutes,
+		MaxConcurrentJobs:     cfg.MaxConcurrentJobs,
 	}
 	outputJSON(settings, logger)
 }

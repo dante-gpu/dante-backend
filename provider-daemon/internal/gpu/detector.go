@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dante-gpu/dante-backend/provider-daemon/internal/config"
 	"go.uber.org/zap"
 )
 
@@ -51,13 +52,15 @@ type GPUMetrics struct {
 // Detector handles GPU detection and monitoring
 type Detector struct {
 	logger *zap.Logger
+	cfg    *config.GPUDetectorSettings
 	gpus   []GPUInfo
 }
 
 // NewDetector creates a new GPU detector
-func NewDetector(logger *zap.Logger) *Detector {
+func NewDetector(cfg *config.GPUDetectorSettings, logger *zap.Logger) *Detector {
 	return &Detector{
 		logger: logger,
+		cfg:    cfg,
 		gpus:   make([]GPUInfo, 0),
 	}
 }
@@ -111,14 +114,26 @@ func (d *Detector) DetectGPUs(ctx context.Context) ([]GPUInfo, error) {
 // detectNVIDIAGPUs detects NVIDIA GPUs using nvidia-smi
 func (d *Detector) detectNVIDIAGPUs(ctx context.Context) ([]GPUInfo, error) {
 	// Check if nvidia-smi is available
-	if !d.isCommandAvailable("nvidia-smi") {
-		return nil, fmt.Errorf("nvidia-smi not found")
+	if d.cfg == nil || d.cfg.NvidiaSmiPath == "" {
+		// Fallback or error if not configured, though config should provide a default.
+		// For now, let's assume default path if specific one is empty.
+		// A better approach might be to ensure NvidiaSmiPath is always non-empty from config loader.
+		if !d.isCommandAvailable("nvidia-smi") {
+			return nil, fmt.Errorf("nvidia-smi command not found (path not configured or not in PATH)")
+		}
+	} else if !d.isCommandAvailable(d.cfg.NvidiaSmiPath) {
+		return nil, fmt.Errorf("nvidia-smi command not found at configured path: %s", d.cfg.NvidiaSmiPath)
 	}
 
-	cmd := exec.CommandContext(ctx, "nvidia-smi", "--query-gpu=index,name,memory.total,memory.free,memory.used,power.draw,power.limit,temperature.gpu,utilization.gpu,driver_version,pci.bus_id", "--format=csv,noheader,nounits")
+	nvidiaSmiCmd := "nvidia-smi" // Default
+	if d.cfg != nil && d.cfg.NvidiaSmiPath != "" {
+		nvidiaSmiCmd = d.cfg.NvidiaSmiPath
+	}
+
+	cmd := exec.CommandContext(ctx, nvidiaSmiCmd, "--query-gpu=index,name,memory.total,memory.free,memory.used,power.draw,power.limit,temperature.gpu,utilization.gpu,driver_version,pci.bus_id", "--format=csv,noheader,nounits")
 	output, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("failed to run nvidia-smi: %w", err)
+		return nil, fmt.Errorf("failed to run %s: %w", nvidiaSmiCmd, err)
 	}
 
 	var gpus []GPUInfo
@@ -131,6 +146,8 @@ func (d *Detector) detectNVIDIAGPUs(ctx context.Context) ([]GPUInfo, error) {
 
 		fields := strings.Split(line, ", ")
 		if len(fields) < 11 {
+			// Try to log this malformed line for debugging
+			d.logger.Warn("Malformed line from nvidia-smi output", zap.String("line", line))
 			continue
 		}
 
@@ -149,43 +166,69 @@ func (d *Detector) detectNVIDIAGPUs(ctx context.Context) ([]GPUInfo, error) {
 
 		if vramTotal, err := strconv.ParseUint(strings.TrimSpace(fields[2]), 10, 64); err == nil {
 			gpu.VRAMTotal = vramTotal
+		} else if fields[2] != " [N/A]" { // Handle [N/A] gracefully
+			d.logger.Warn("Failed to parse VRAM Total from nvidia-smi", zap.String("value", fields[2]), zap.Error(err))
 		}
 
 		if vramFree, err := strconv.ParseUint(strings.TrimSpace(fields[3]), 10, 64); err == nil {
 			gpu.VRAMFree = vramFree
+		} else if fields[3] != " [N/A]" {
+			d.logger.Warn("Failed to parse VRAM Free from nvidia-smi", zap.String("value", fields[3]), zap.Error(err))
 		}
 
 		if vramUsed, err := strconv.ParseUint(strings.TrimSpace(fields[4]), 10, 64); err == nil {
 			gpu.VRAMUsed = vramUsed
+		} else if fields[4] != " [N/A]" {
+			d.logger.Warn("Failed to parse VRAM Used from nvidia-smi", zap.String("value", fields[4]), zap.Error(err))
 		}
 
-		if powerDraw, err := strconv.ParseFloat(strings.TrimSpace(fields[5]), 32); err == nil {
-			gpu.PowerDraw = uint32(powerDraw)
+		if powerDrawStr := strings.TrimSpace(fields[5]); powerDrawStr != "[N/A]" {
+			if powerDraw, err := strconv.ParseFloat(powerDrawStr, 32); err == nil {
+				gpu.PowerDraw = uint32(powerDraw)
+			} else {
+				d.logger.Warn("Failed to parse Power Draw from nvidia-smi", zap.String("value", powerDrawStr), zap.Error(err))
+			}
 		}
 
-		if powerLimit, err := strconv.ParseFloat(strings.TrimSpace(fields[6]), 32); err == nil {
-			gpu.PowerLimit = uint32(powerLimit)
+		if powerLimitStr := strings.TrimSpace(fields[6]); powerLimitStr != "[N/A]" {
+			if powerLimit, err := strconv.ParseFloat(powerLimitStr, 32); err == nil {
+				gpu.PowerLimit = uint32(powerLimit)
+			} else {
+				d.logger.Warn("Failed to parse Power Limit from nvidia-smi", zap.String("value", powerLimitStr), zap.Error(err))
+			}
 		}
 
-		if temp, err := strconv.ParseUint(strings.TrimSpace(fields[7]), 10, 8); err == nil {
-			gpu.Temperature = uint8(temp)
+		if tempStr := strings.TrimSpace(fields[7]); tempStr != "[N/A]" {
+			if temp, err := strconv.ParseUint(tempStr, 10, 8); err == nil {
+				gpu.Temperature = uint8(temp)
+			} else {
+				d.logger.Warn("Failed to parse Temperature from nvidia-smi", zap.String("value", tempStr), zap.Error(err))
+			}
 		}
 
-		if util, err := strconv.ParseUint(strings.TrimSpace(fields[8]), 10, 8); err == nil {
-			gpu.Utilization = uint8(util)
+		if utilStr := strings.TrimSpace(fields[8]); utilStr != "[N/A]" {
+			if util, err := strconv.ParseUint(utilStr, 10, 8); err == nil {
+				gpu.Utilization = uint8(util)
+			} else {
+				d.logger.Warn("Failed to parse GPU Utilization from nvidia-smi", zap.String("value", utilStr), zap.Error(err))
+			}
 		}
 
 		gpu.DriverVersion = strings.TrimSpace(fields[9])
 		gpu.PCIBusID = strings.TrimSpace(fields[10])
 
 		// Get CUDA version
-		if cudaVersion, err := d.getCUDAVersion(ctx); err == nil {
+		if cudaVersion, err := d.getCUDAVersion(ctx, nvidiaSmiCmd); err == nil {
 			gpu.CUDAVersion = cudaVersion
+		} else {
+			d.logger.Warn("Failed to get CUDA version", zap.Error(err))
 		}
 
 		// Get compute capability
 		if computeCap, err := d.getComputeCapability(ctx, gpu.ID); err == nil {
 			gpu.ComputeCapability = computeCap
+		} else {
+			d.logger.Warn("Failed to get compute capability", zap.String("gpuID", gpu.ID), zap.Error(err))
 		}
 
 		gpus = append(gpus, gpu)
@@ -377,8 +420,8 @@ func (d *Detector) isCommandAvailable(command string) bool {
 }
 
 // getCUDAVersion gets the CUDA version
-func (d *Detector) getCUDAVersion(ctx context.Context) (string, error) {
-	cmd := exec.CommandContext(ctx, "nvidia-smi", "--query-gpu=driver_version", "--format=csv,noheader,nounits")
+func (d *Detector) getCUDAVersion(ctx context.Context, nvidiaSmiCmd string) (string, error) {
+	cmd := exec.CommandContext(ctx, nvidiaSmiCmd, "--query-gpu=driver_version", "--format=csv,noheader,nounits")
 	output, err := cmd.Output()
 	if err != nil {
 		return "", err
@@ -395,11 +438,18 @@ func (d *Detector) getComputeCapability(ctx context.Context, gpuID string) (stri
 
 // getNVIDIAMetrics gets real-time metrics for NVIDIA GPUs
 func (d *Detector) getNVIDIAMetrics(ctx context.Context) ([]GPUMetrics, error) {
-	if !d.isCommandAvailable("nvidia-smi") {
-		return nil, fmt.Errorf("nvidia-smi not available")
+	nvidiaSmiCmd := "nvidia-smi" // Default
+	if d.cfg != nil && d.cfg.NvidiaSmiPath != "" {
+		nvidiaSmiCmd = d.cfg.NvidiaSmiPath
+	} else if !d.isCommandAvailable(nvidiaSmiCmd) {
+		return nil, fmt.Errorf("nvidia-smi command not found (path not configured or not in PATH)")
 	}
 
-	cmd := exec.CommandContext(ctx, "nvidia-smi", "--query-gpu=index,utilization.gpu,memory.used,memory.total,power.draw,temperature.gpu,fan.speed,clocks.gr,clocks.mem", "--format=csv,noheader,nounits")
+	if !d.isCommandAvailable(nvidiaSmiCmd) { // Double check, one might be redundant with above
+		return nil, fmt.Errorf("%s not available", nvidiaSmiCmd)
+	}
+
+	cmd := exec.CommandContext(ctx, nvidiaSmiCmd, "--query-gpu=index,utilization.gpu,memory.used,memory.total,power.draw,temperature.gpu,fan.speed,clocks.gr,clocks.mem", "--format=csv,noheader,nounits")
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, err
@@ -415,6 +465,7 @@ func (d *Detector) getNVIDIAMetrics(ctx context.Context) ([]GPUMetrics, error) {
 
 		fields := strings.Split(line, ", ")
 		if len(fields) < 9 {
+			d.logger.Warn("Malformed metrics line from nvidia-smi", zap.String("line", line))
 			continue
 		}
 
@@ -426,36 +477,69 @@ func (d *Detector) getNVIDIAMetrics(ctx context.Context) ([]GPUMetrics, error) {
 			metric.ID = fmt.Sprintf("nvidia-%s", id)
 		}
 
-		if util, err := strconv.ParseUint(strings.TrimSpace(fields[1]), 10, 8); err == nil {
-			metric.Utilization = uint8(util)
+		if utilStr := strings.TrimSpace(fields[1]); utilStr != "[N/A]" {
+			if util, err := strconv.ParseUint(utilStr, 10, 8); err == nil {
+				metric.Utilization = uint8(util)
+			} else {
+				d.logger.Warn("Failed to parse metrics GPU Utilization", zap.String("value", utilStr), zap.Error(err))
+			}
 		}
 
-		if vramUsed, err := strconv.ParseUint(strings.TrimSpace(fields[2]), 10, 64); err == nil {
-			metric.VRAMUsed = vramUsed
+		if vramUsedStr := strings.TrimSpace(fields[2]); vramUsedStr != "[N/A]" {
+			if vramUsed, err := strconv.ParseUint(vramUsedStr, 10, 64); err == nil {
+				metric.VRAMUsed = vramUsed
+			} else {
+				d.logger.Warn("Failed to parse metrics VRAM Used", zap.String("value", vramUsedStr), zap.Error(err))
+			}
 		}
 
-		if vramTotal, err := strconv.ParseUint(strings.TrimSpace(fields[3]), 10, 64); err == nil {
-			metric.VRAMTotal = vramTotal
+		if vramTotalStr := strings.TrimSpace(fields[3]); vramTotalStr != "[N/A]" {
+			if vramTotal, err := strconv.ParseUint(vramTotalStr, 10, 64); err == nil {
+				metric.VRAMTotal = vramTotal
+			} else {
+				d.logger.Warn("Failed to parse metrics VRAM Total", zap.String("value", vramTotalStr), zap.Error(err))
+			}
 		}
 
-		if powerDraw, err := strconv.ParseFloat(strings.TrimSpace(fields[4]), 32); err == nil {
-			metric.PowerDraw = uint32(powerDraw)
+		if powerDrawStr := strings.TrimSpace(fields[4]); powerDrawStr != "[N/A]" {
+			if powerDraw, err := strconv.ParseFloat(powerDrawStr, 32); err == nil {
+				metric.PowerDraw = uint32(powerDraw)
+			} else {
+				d.logger.Warn("Failed to parse metrics Power Draw", zap.String("value", powerDrawStr), zap.Error(err))
+			}
 		}
 
-		if temp, err := strconv.ParseUint(strings.TrimSpace(fields[5]), 10, 8); err == nil {
-			metric.Temperature = uint8(temp)
+		if tempStr := strings.TrimSpace(fields[5]); tempStr != "[N/A]" {
+			if temp, err := strconv.ParseUint(tempStr, 10, 8); err == nil {
+				metric.Temperature = uint8(temp)
+			} else {
+				d.logger.Warn("Failed to parse metrics Temperature", zap.String("value", tempStr), zap.Error(err))
+			}
 		}
 
-		if fanSpeed, err := strconv.ParseUint(strings.TrimSpace(fields[6]), 10, 8); err == nil {
-			metric.FanSpeed = uint8(fanSpeed)
+		fanSpeedStr := strings.TrimSpace(fields[6])
+		if fanSpeedStr != "[N/A]" && fanSpeedStr != "[Not Supported]" { // Handle different unavailable markers
+			if fanSpeed, err := strconv.ParseUint(fanSpeedStr, 10, 8); err == nil {
+				metric.FanSpeed = uint8(fanSpeed)
+			} else {
+				d.logger.Warn("Failed to parse metrics Fan Speed", zap.String("value", fanSpeedStr), zap.Error(err))
+			}
 		}
 
-		if clockCore, err := strconv.ParseUint(strings.TrimSpace(fields[7]), 10, 32); err == nil {
-			metric.ClockCore = uint32(clockCore)
+		if clockCoreStr := strings.TrimSpace(fields[7]); clockCoreStr != "[N/A]" {
+			if clockCore, err := strconv.ParseUint(clockCoreStr, 10, 32); err == nil {
+				metric.ClockCore = uint32(clockCore)
+			} else {
+				d.logger.Warn("Failed to parse metrics Clock Core", zap.String("value", clockCoreStr), zap.Error(err))
+			}
 		}
 
-		if clockMemory, err := strconv.ParseUint(strings.TrimSpace(fields[8]), 10, 32); err == nil {
-			metric.ClockMemory = uint32(clockMemory)
+		if clockMemoryStr := strings.TrimSpace(fields[8]); clockMemoryStr != "[N/A]" {
+			if clockMemory, err := strconv.ParseUint(clockMemoryStr, 10, 32); err == nil {
+				metric.ClockMemory = uint32(clockMemory)
+			} else {
+				d.logger.Warn("Failed to parse metrics Clock Memory", zap.String("value", clockMemoryStr), zap.Error(err))
+			}
 		}
 
 		metrics = append(metrics, metric)
