@@ -1,4 +1,4 @@
-module dante-backend
+module github.com/dante-gpu/dante-backend
 
 go 1.21
 

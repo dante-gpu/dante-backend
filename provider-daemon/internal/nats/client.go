@@ -273,6 +273,45 @@ func (c *Client) PublishStatus(statusUpdate *models.TaskStatusUpdate) error {
 	return c.nc.FlushTimeout(c.cfg.NatsCommandTimeout)
 }
 
+// IsConnected checks if the NATS client is currently connected.
+func (c *Client) IsConnected() bool {
+	if c.nc == nil {
+		return false
+	}
+	return c.nc.Status() == nats.CONNECTED
+}
+
+// GetConnectionURL returns the URL the NATS client is connected to,
+// or the configured URL if not connected.
+func (c *Client) GetConnectionURL() string {
+	if c.nc != nil && c.nc.Status() == nats.CONNECTED {
+		return c.nc.ConnectedUrl()
+	}
+	return c.cfg.NatsConfig.URL // Return the target URL from config if not connected
+}
+
+// GetLastErrorStr returns the last error encountered by the NATS client as a string.
+// Returns an empty string if there is no last error.
+func (c *Client) GetLastErrorStr() string {
+	if c.nc == nil {
+		return "NATS client not initialized"
+	}
+	lastErr := c.nc.LastError()
+	if lastErr != nil {
+		return lastErr.Error()
+	}
+	return ""
+}
+
+// GetActiveSubscriptionCount returns the number of active (valid) primary task subscriptions.
+// Currently, this is 0 or 1.
+func (c *Client) GetActiveSubscriptionCount() int {
+	if c.subscription != nil && c.subscription.IsValid() {
+		return 1
+	}
+	return 0
+}
+
 // Stop gracefully shuts down the NATS client.
 func (c *Client) Stop() {
 	c.logger.Info("Stopping NATS client for provider daemon...")

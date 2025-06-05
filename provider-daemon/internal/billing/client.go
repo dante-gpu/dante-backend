@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 	"go.uber.org/zap"
+	// For CliFinancialSummary type if needed, or define local types
 )
 
 // Client represents a client for the billing service
@@ -256,4 +257,48 @@ func (c *Client) CheckSessionStatus(ctx context.Context, sessionID uuid.UUID) (b
 	}
 
 	return isActive, nil
+}
+
+// FinancialSummaryDetails represents the detailed financial data expected from the billing service.
+// This is a local representation, mapping to what CliFinancialSummary might need.
+type FinancialSummaryDetails struct {
+	TotalEarnedDGPU    float32
+	PendingPayoutDGPU  float32
+	CurrentBalanceDGPU float32 // This might be the primary balance query
+	LastPayoutDGPU     float32
+	LastPayoutAt       *time.Time
+	// Potentially other fields like NextEstimatedPayout etc.
+}
+
+// GetBalance (hypothetical, from previous linter error context)
+// This is a placeholder, assuming the billing service would have an endpoint for this.
+func (c *Client) GetBalance(ctx context.Context, providerID string) (float64, error) {
+	c.logger.Warn("billing.Client.GetBalance is a STUB and not implemented. Returning mock data.", zap.String("providerID", providerID))
+	// Mock implementation: call an endpoint like /api/v1/wallet/{providerID}/balance
+	// url := fmt.Sprintf("%s/api/v1/wallet/%s/balance", c.baseURL, providerID)
+	// ... http GET request ...
+	// ... unmarshal response ...
+	return 123.45, nil // Mock balance
+}
+
+// GetFinancialSummary retrieves a summary of financial data for the provider.
+// This is a STUB method and needs a corresponding endpoint in the billing service.
+func (c *Client) GetFinancialSummary(ctx context.Context, providerID string) (*FinancialSummaryDetails, error) {
+	c.logger.Warn("billing.Client.GetFinancialSummary is a STUB and not implemented. Returning mock data.", zap.String("providerID", providerID))
+
+	// In a real implementation, this would call an endpoint on the billing service:
+	// e.g., GET /api/v1/providers/{providerID}/financial-summary
+	// For now, return mock data based on CliFinancialSummary structure.
+
+	// Attempt to get at least the current balance using the stubbed GetBalance
+	balance, _ := c.GetBalance(ctx, providerID) // Ignore error for stub
+
+	mockTime := time.Now().Add(-24 * time.Hour)
+	return &FinancialSummaryDetails{
+		TotalEarnedDGPU:    float32(balance + 1000.0), // Mock
+		PendingPayoutDGPU:  float32(balance),          // Mock based on GetBalance stub
+		CurrentBalanceDGPU: float32(balance),          // Mock
+		LastPayoutDGPU:     500.0,                     // Mock
+		LastPayoutAt:       &mockTime,                 // Mock
+	}, nil
 }

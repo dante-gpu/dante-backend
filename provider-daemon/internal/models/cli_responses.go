@@ -36,13 +36,22 @@ type CliLocalJob struct {
 	EstimatedCostDGPU *float32 `json:"estimated_cost_dgpu,omitempty"`
 }
 
-// CliNetworkStatus mirrors the NetworkStatus struct in provider-gui
+// CliSystemOverview provides a snapshot of system-level metrics.
+// TODO: Populate with actual system metrics (CPU, RAM, Disk, Network I/O).
+type CliSystemOverview struct {
+	TotalDiskSpaceGB uint64  `json:"total_disk_space_gb"`
+	FreeDiskSpaceGB  uint64  `json:"free_disk_space_gb"`
+	CpuUsagePercent  float32 `json:"cpu_usage_percent"`
+	RamUsagePercent  float32 `json:"ram_usage_percent"`
+	UptimeSeconds    uint64  `json:"uptime_seconds"`
+}
+
+// CliNetworkStatus provides information about the daemon's network connectivity.
 type CliNetworkStatus struct {
-	ConnectionType    string  `json:"connection_type"`
-	IPAddress         *string `json:"ip_address,omitempty"`
-	UploadSpeedMbps   float32 `json:"upload_speed_mbps"`
-	DownloadSpeedMbps float32 `json:"download_speed_mbps"`
-	LatencyMs         uint32  `json:"latency_ms"`
+	NatsConnected       bool   `json:"nats_connected"`
+	NatsServerURL       string `json:"nats_server_url"`
+	LastNatsError       string `json:"last_nats_error,omitempty"`
+	ActiveSubscriptions int    `json:"active_subscriptions,omitempty"` // Example: Number of active NATS subscriptions
 }
 
 // CliFinancialSummary mirrors the FinancialSummary struct in provider-gui
@@ -52,6 +61,9 @@ type CliFinancialSummary struct {
 	PendingPayoutDGPU  float32 `json:"pending_payout_dgpu"`
 	LastPayoutAt       *string `json:"last_payout_at,omitempty"`
 }
+
+// CliFinancialOverview provides a summary of financial data.
+// TODO: Populate with actual financial data (e.g., earnings, balance).
 
 // ptrFloat32 returns a pointer to a float32 value.
 func ptrFloat32(f float32) *float32 {
