@@ -110,7 +110,8 @@ func (c *Client) startSubscription() error {
 	finalSanitizedID := strings.ToLower(tempSanitizedID)
 
 	// Using a simpler, known-good format for the durable name parts
-	durableName := fmt.Sprintf("pd_%s_taskconsumer", finalSanitizedID)
+	// durableName := fmt.Sprintf("pd_%s_taskconsumer", finalSanitizedID) // Original sanitized name
+	durableName := fmt.Sprintf("pd_%s_taskconsumer", finalSanitizedID) // Use the sanitized ID
 
 	c.logger.Info("Subscribing to NATS task dispatch subject (JetStream Pull)",
 		zap.String("subscription_subject_pattern", c.cfg.NatsTaskSubscriptionSubjectPattern),
