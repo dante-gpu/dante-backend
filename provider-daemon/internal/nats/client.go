@@ -102,13 +102,21 @@ func (c *Client) startSubscription() error {
 	// A pull consumer subscribes to a subject (which can be a wildcard) on a stream.
 	// The stream should be configured to capture these subjects.
 
-	// Sanitize InstanceID for NATS consumer name (replace . with _)
-	sanitizedInstanceID := strings.ReplaceAll(c.cfg.InstanceID, ".", "_")
-	durableName := fmt.Sprintf("provider_daemon_%s_tasks_consumer", sanitizedInstanceID)
+	// Sanitize InstanceID for NATS consumer name
+	rawInstanceID := c.cfg.InstanceID
+	// Replace periods and hyphens with underscores, then convert to lowercase
+	tempSanitizedID := strings.ReplaceAll(rawInstanceID, ".", "_")
+	tempSanitizedID = strings.ReplaceAll(tempSanitizedID, "-", "_")
+	finalSanitizedID := strings.ToLower(tempSanitizedID)
+
+	// Using a simpler, known-good format for the durable name parts
+	durableName := fmt.Sprintf("pd_%s_taskconsumer", finalSanitizedID)
 
 	c.logger.Info("Subscribing to NATS task dispatch subject (JetStream Pull)",
 		zap.String("subscription_subject_pattern", c.cfg.NatsTaskSubscriptionSubjectPattern),
 		zap.String("effective_subscription_subject", subjectToSubscribe),
+		zap.String("original_instance_id_for_consumer", rawInstanceID), // Log original ID
+		zap.String("sanitized_id_for_consumer", finalSanitizedID),      // Log fully sanitized ID
 		zap.String("durable_consumer_name", durableName),
 	)
 
