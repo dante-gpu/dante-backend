@@ -22,7 +22,7 @@ async fn start_daemon(window: Window, app_state: tauri::State<'_, AppState>) -> 
         child.kill().map_err(|e| format!("Failed to kill previous daemon: {}", e))?;
     }
 
-    let sidecar_name = "provider-daemon-*"; // Matches externalBin in tauri.conf.json
+    let sidecar_name = "provider-daemon"; // Matches externalBin in tauri.conf.json
     
     window.emit("daemon-status", format!("Starting daemon: {} with config.yaml...", sidecar_name)).unwrap_or_default();
 

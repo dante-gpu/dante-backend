@@ -7,19 +7,20 @@
   --card-foreground: hsl(240, 10%, 3.9%);
   --popover: hsl(28, 15%, 92%);
   --popover-foreground: hsl(240, 10%, 3.9%);
-  --primary: hsl(0, 100%, 34%);
-  --primary-foreground: hsl(0, 0%, 98%);
+  --primary: hsl(0, 100%, 34%); /* Red tone */
+  --primary-foreground: hsl(0, 0%, 98%); /* Light color for text on primary */
   --secondary: hsl(28, 15%, 82%);
   --secondary-foreground: hsl(240, 5.9%, 10%);
   --muted: hsl(28, 15%, 82%);
   --muted-foreground: hsl(240, 3.8%, 46.1%);
-  --accent: hsl(0, 100%, 34%);
+  --accent: hsl(0, 100%, 34%); /* Same as primary for accents */
   --accent-foreground: hsl(0, 0%, 98%);
   --destructive: hsl(0, 84.2%, 60.2%);
   --destructive-foreground: hsl(0, 0%, 98%);
-  --border: hsl(0, 0%, 0%);
-  --input: hsl(28, 15%, 85%);
-  --ring: hsl(0, 100%, 34%);
+  --border: hsl(0, 0%, 0%); /* Black border */
+  --input: hsl(28, 15%, 95%); /* Lighter for input backgrounds */
+  --input-border: hsl(28, 15%, 75%);
+  --ring: hsl(0, 100%, 34%); /* Primary color for focus rings */
   --radius: 0.5rem;
 
   --chart-1: hsl(12, 76%, 61%);
@@ -30,16 +31,34 @@
 
   --font-family-sans: 'Hubot Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-family-mono: 'Menlo', 'Monaco', 'Consolas', 'Liberation Mono', 'Courier New', monospace;
+
+  /* Status colors */
+  --status-on-bg: hsl(120, 60%, 90%);
+  --status-on-text: hsl(120, 60%, 30%);
+  --status-on-border: hsl(120, 60%, 70%);
+
+  --status-off-bg: hsl(0, 60%, 90%);
+  --status-off-text: hsl(0, 60%, 30%);
+  --status-off-border: hsl(0, 60%, 70%);
+
+  --status-error-bg: hsl(30, 100%, 90%);
+  --status-error-text: hsl(30, 100%, 30%);
+  --status-error-border: hsl(30, 100%, 70%);
+  
+  --success-bg: hsl(120, 60%, 90%);
+  --success-text: hsl(120, 60%, 30%);
+  --warning-bg: hsl(45, 100%, 90%);
+  --warning-text: hsl(45, 100%, 30%);
+
 }
 
 body {
   margin: 0;
   font-family: var(--font-family-sans);
-  background-color: var(--background);
-  color: var(--foreground);
-  line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  background-color: var(--background);
+  color: var(--foreground);
 }
 
 #root {
@@ -49,141 +68,130 @@ body {
 }
 
 .app-container {
-  width: 100%;
-  max-width: 900px;
-  margin: 2rem auto;
-  padding: 2rem;
-  box-sizing: border-box;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
 }
 
 .header {
-  text-align: center;
-  margin-bottom: 2.5rem;
-  border-bottom: 2px solid var(--border);
-  padding-bottom: 1.5rem;
+  background-color: var(--card);
+  color: var(--card-foreground);
+  padding: 20px;
+  border-radius: var(--radius);
+  margin-bottom: 20px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  border: 1px solid var(--border);
 }
 
 .header h1 {
-  font-size: 2.8rem;
-  font-weight: 700;
-  color: var(--primary); /* Red for main title */
-  margin-bottom: 0.25rem;
-  letter-spacing: -0.5px;
+  margin: 0 0 10px 0;
+  color: var(--primary); 
 }
 
-.header p {
-  font-size: 1.1rem;
-  color: var(--muted-foreground);
-}
-
-.controls-card {
+.card {
   background-color: var(--card);
-  border: 2px solid var(--border);
+  color: var(--card-foreground);
+  padding: 20px;
   border-radius: var(--radius);
-  padding: 2rem;
-  margin-bottom: 2rem;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  margin-bottom: 20px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  border: 1px solid var(--border);
 }
 
-.status-display {
-  margin-bottom: 1.5rem;
-  padding: 1rem;
-  border: 2px solid var(--border);
+.controls-card .status-display {
+  padding: 15px;
   border-radius: var(--radius);
+  margin-bottom: 15px;
+  font-weight: bold;
   text-align: center;
-  font-weight: 500;
-  font-size: 1.1rem;
 }
 
 .status-on {
-  background-color: hsl(145, 63%, 42%); /* A distinct green */
-  color: var(--primary-foreground);
-  border-color: hsl(145, 63%, 32%);
+  background-color: var(--status-on-bg);
+  color: var(--status-on-text);
+  border: 1px solid var(--status-on-border);
 }
 
 .status-off {
-  background-color: var(--secondary);
-  color: var(--secondary-foreground);
-  border-color: hsl(28, 15%, 72%);
+  background-color: var(--status-off-bg);
+  color: var(--status-off-text);
+  border: 1px solid var(--status-off-border);
 }
 
 .status-error {
-  background-color: var(--destructive);
-  color: var(--destructive-foreground);
-  border-color: hsl(0, 84.2%, 50.2%);
+  background-color: var(--status-error-bg);
+  color: var(--status-error-text);
+  border: 1px solid var(--status-error-border);
 }
 
 .controls {
   display: flex;
+  gap: 10px;
   justify-content: center;
-  gap: 1.5rem;
 }
 
 button {
-  background-color: var(--primary);
-  color: var(--primary-foreground);
-  border: 2px solid var(--border);
-  padding: 0.8rem 1.8rem;
+  padding: 10px 15px;
   border-radius: var(--radius);
+  border: 1px solid var(--border);
   cursor: pointer;
-  font-size: 1rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  transition: background-color 0.2s ease-in-out, transform 0.1s ease-in-out, box-shadow 0.2s ease-in-out;
-  box-shadow: 0 2px 0 0 var(--border); /* Simple 3D effect */
-}
-
-button:hover {
-  background-color: hsl(0, 100%, 29%); /* Darker red */
-  transform: translateY(-2px);
-  box-shadow: 0 4px 0 0 var(--border);
-}
-
-button:active {
-  transform: translateY(0px);
-  box-shadow: 0 1px 0 0 var(--border);
+  font-weight: 500;
+  transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out;
+  font-family: var(--font-family-sans);
 }
 
 button:disabled {
   background-color: var(--muted);
   color: var(--muted-foreground);
-  border-color: var(--secondary);
+  border-color: var(--muted);
   cursor: not-allowed;
-  transform: none;
-  box-shadow: 0 2px 0 0 var(--secondary);
 }
 
-.logs-card {
-  background-color: var(--card);
-  border: 2px solid var(--border);
-  border-radius: var(--radius);
-  padding: 0; /* Remove padding, add to inner elements */
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+button:not(:disabled) {
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+  border-color: var(--primary);
 }
 
-.logs-header {
-  padding: 1rem 1.5rem;
-  font-size: 1.25rem;
-  font-weight: 600;
+button:not(:disabled):hover {
+  background-color: hsl(0, 100%, 40%); /* Darker shade of primary */
+  border-color: hsl(0, 100%, 40%);
+}
+
+/* Secondary button style example */
+button.secondary {
+  background-color: var(--secondary);
+  color: var(--secondary-foreground);
+  border-color: var(--secondary);
+}
+button.secondary:hover:not(:disabled) {
+  background-color: hsl(28, 15%, 75%); /* Darker secondary */
+  border-color: hsl(28, 15%, 75%);
+}
+
+
+.logs-card .logs-header {
+  margin-top: 0;
+  margin-bottom: 15px;
   color: var(--card-foreground);
-  border-bottom: 2px solid var(--border);
 }
 
 .logs-container {
-  padding: 1.5rem;
-  height: 450px;
+  background-color: hsl(240, 10%, 15%); /* Darker background for logs */
+  color: hsl(0, 0%, 95%); /* Light text for logs */
+  padding: 15px;
+  border-radius: var(--radius);
+  max-height: 400px;
   overflow-y: auto;
   font-family: var(--font-family-mono);
-  font-size: 0.9rem;
-  line-height: 1.6;
-  color: var(--foreground); /* Default log text */
+  font-size: 0.9em;
+  border: 1px solid var(--border);
 }
 
 .log-entry {
-  padding: 0.3rem 0;
-  border-bottom: 1px solid var(--secondary);
-  display: flex; /* For timestamp and message alignment */
+  padding: 4px 0;
+  border-bottom: 1px solid hsl(240, 10%, 25%); /* Slightly lighter border for log entries */
+  display: flex;
 }
 
 .log-entry:last-child {
@@ -191,39 +199,181 @@ button:disabled {
 }
 
 .log-timestamp {
-  color: var(--muted-foreground);
+  color: var(--chart-2); /* Using a chart color for variety */
   margin-right: 10px;
-  flex-shrink: 0; /* Prevent timestamp from shrinking */
+  min-width: 80px;
 }
 
 .log-message {
-  word-break: break-all; /* Prevent long messages from overflowing */
+  white-space: pre-wrap;
+  word-break: break-all;
+  flex-grow: 1;
 }
 
 .log-stdout {
-  color: var(--foreground); /* Standard output */
+  color: var(--chart-4); /* Greenish chart color for stdout */
 }
 
 .log-stderr {
-  color: hsl(30, 90%, 50%); /* Orange/dark yellow for stderr */
-}
-
-.log-status {
-  color: hsl(200, 70%, 45%); /* Blue for status */
-  font-weight: 500;
+  color: var(--chart-1); /* Reddish chart color for stderr */
 }
 
 .log-error {
-  color: var(--destructive); /* Use destructive color for errors */
+  color: var(--destructive); /* Destructive color for error status */
   font-weight: bold;
 }
 
-.status-badge {
-  padding: 0.5rem 1rem;
-  border-radius: 6px;
+.log-status {
+  color: var(--chart-5); /* Purple-ish chart color for status messages */
+}
+
+/* GPU Management Styles */
+.gpu-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 15px;
+}
+
+.gpu-item {
+  /* Uses .card styles by default if class="gpu-item card" */
+  /* Specific overrides for gpu-item if needed */
+}
+
+.gpu-item h3 {
+  margin-top: 0;
+  color: var(--primary);
+}
+
+.status-rentable {
+  color: var(--success-text);
+  background-color: var(--success-bg);
+  padding: 2px 6px;
+  border-radius: var(--radius);
+  font-weight: bold;
+}
+
+.status-private {
+  color: var(--warning-text);
+  background-color: var(--warning-bg);
+  padding: 2px 6px;
+  border-radius: var(--radius);
+  font-weight: bold;
+}
+
+/* Modal Styles */
+.modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.6); /* Darker backdrop */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  /* Uses .card styles by default if class="modal-content card" */
+  /* Specific overrides for modal-content */
+  min-width: 350px;
+  max-width: 500px;
+}
+
+.modal-content h3 {
+  margin-top: 0;
+  color: var(--primary);
+}
+
+.modal-content label {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--card-foreground);
+}
+
+.modal-content input[type="number"],
+.modal-content input[type="text"] {
+  width: calc(100% - 22px); /* Account for padding and border */
+  padding: 10px;
+  margin-bottom: 15px;
+  border: 1px solid var(--input-border);
+  background-color: var(--input);
+  color: var(--foreground);
+  border-radius: var(--radius);
+  font-family: var(--font-family-sans);
+}
+.modal-content input[type="number"]:focus,
+.modal-content input[type="text"]:focus {
+  outline: none;
+  border-color: var(--ring);
+  box-shadow: 0 0 0 2px hsla(var(--ring), 0.5);
+}
+
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+/* Job List Styles */
+.job-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 15px;
+}
+
+.job-item {
+  /* Uses .card styles by default if class="job-item card" */
+}
+.job-item h4 {
+  color: var(--primary);
+}
+
+.job-status-running { color: var(--primary); font-weight: bold; }
+.job-status-completed { color: var(--success-text); font-weight: bold; }
+.job-status-failed { color: var(--destructive); font-weight: bold; }
+.job-status-queued { color: var(--warning-text); font-weight: bold; }
+
+/* Overview Section Styles */
+.overview-item {
+  margin-bottom: 15px;
+}
+.overview-item h4 {
+  margin-bottom: 5px;
+  color: var(--primary);
+}
+.overview-item p {
+  color: var(--card-foreground);
+}
+
+
+/* Settings Section */
+#defaultRate, input[type="number"], input[type="text"] {
+  /* General input styling, some already in modal */
+  padding: 8px;
+  margin-right: 10px;
+  border: 1px solid var(--input-border);
+  background-color: var(--input);
+  color: var(--foreground);
+  border-radius: var(--radius);
+  font-family: var(--font-family-sans);
+}
+#defaultRate:focus, input[type="number"]:focus, input[type="text"]:focus {
+  outline: none;
+  border-color: var(--ring);
+  box-shadow: 0 0 0 2px hsla(var(--ring), 0.5);
+}
+
+.settings-section label { /* Assuming settings section will have labels */
+  display: block;
+  margin-bottom: 5px;
   font-weight: 500;
-  text-align: center;
-  margin-bottom: 1rem;
+}
+.settings-section div { /* Assuming inputs are wrapped in divs */
+  margin-bottom: 15px;
 }
 
 /* Add more global styles or component-specific styles in separate files */ 

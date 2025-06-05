@@ -3,6 +3,7 @@ package nats
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/dante-gpu/dante-backend/provider-daemon/internal/config"
@@ -101,7 +102,9 @@ func (c *Client) startSubscription() error {
 	// A pull consumer subscribes to a subject (which can be a wildcard) on a stream.
 	// The stream should be configured to capture these subjects.
 
-	durableName := fmt.Sprintf("provider_daemon_%s_tasks_consumer", c.cfg.InstanceID)
+	// Sanitize InstanceID for NATS consumer name (replace . with _)
+	sanitizedInstanceID := strings.ReplaceAll(c.cfg.InstanceID, ".", "_")
+	durableName := fmt.Sprintf("provider_daemon_%s_tasks_consumer", sanitizedInstanceID)
 
 	c.logger.Info("Subscribing to NATS task dispatch subject (JetStream Pull)",
 		zap.String("subscription_subject_pattern", c.cfg.NatsTaskSubscriptionSubjectPattern),
