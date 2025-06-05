@@ -1,7 +1,11 @@
 {
   "build": {
-    "beforeDevCommand": "npm run dev --prefix ../",
-    "beforeBuildCommand": "npm run build --prefix ../",
+    "beforeDevCommand": {
+      "script": "npm run dev"
+    },
+    "beforeBuildCommand": {
+      "script": "npm run build"
+    },
     "devPath": "http://localhost:5173",
     "distDir": "../dist",
     "withGlobalTauri": true
@@ -15,7 +19,8 @@
       "all": false,
       "shell": {
         "all": false,
-        "open": true
+        "open": true,
+        "sidecar": true
       },
       "fs": {
         "all": true,
@@ -27,13 +32,11 @@
       "process": {
         "all": true,
         "exit": true,
-        "relaunch": true,
-        "command": "provider-daemon",
-        "sidecar": true
+        "relaunch": true
       },
       "http": {
         "all": true,
-        "scope": ["http://localhost:*", "https://localhost:*"]
+        "scope": ["http://localhost/*", "https://localhost/*"]
       },
       "notification": {
         "all": true
@@ -50,8 +53,8 @@
         "icons/icon.icns",
         "icons/icon.ico"
       ],
-      "resources": ["sidecars/provider-daemon-*"],
-      "externalBin": ["sidecars/provider-daemon-*"]
+      "resources": [],
+      "externalBin": ["sidecars/provider-daemon"]
     },
     "security": {
       "csp": null,
@@ -75,10 +78,6 @@
         "label": "main"
       }
     ],
-    "systemTray": {
-      "iconPath": "icons/icon.png",
-      "iconAsTemplate": true
-    },
     "macOSPrivateApi": true
   }
 } 

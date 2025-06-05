@@ -1,0 +1,77 @@
+# .goreleaser.yml
+# Configuration for building the provider-daemon for multiple platforms.
+
+project_name: provider-daemon
+
+# Optional: Hook to run before building, e.g., tidy go.mod
+before:
+  hooks:
+    - go mod tidy
+    # You could add other pre-build steps here, like code generation if needed
+
+builds:
+  - id: provider-daemon-build # Unique ID for this build configuration
+    main: ./cmd/daemon/      # Path to the main package of your daemon
+    binary: provider-daemon  # The name of the binary inside archives/before name_template applies
+    env:
+      - CGO_ENABLED=0        # Statically link binaries where possible
+    goos:                    # Target Operating Systems
+      - linux
+      - windows
+      - darwin
+    goarch:                  # Target Architectures
+      - amd64                # For Intel/AMD 64-bit
+      - arm64                # For ARM 64-bit (e.g., Apple Silicon, Raspberry Pi 64-bit)
+    # Optional: Ignore specific OS/Arch combinations if not needed
+    # ignore:
+    #   - goos: windows
+    #     goarch: arm64
+
+archives:
+  - id: provider-daemon-sidecars # Unique ID for this archive configuration
+    builds: # References the 'id' from the builds section
+      - provider-daemon-build
+    format: binary # Crucial: This tells GoReleaser to output the raw binaries directly,
+                   # not wrapped in a .tar.gz or .zip for this specific archive config.
+                   # These binaries will be placed in the 'dist' directory.
+    name_template: "{{ .Binary }}-{{ .Os }}-{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
+    # This template will result in names like:
+    # provider-daemon-linux-amd64
+    # provider-daemon-windows-amd64.exe (GoReleaser adds .exe automatically for windows)
+    # provider-daemon-darwin-arm64
+
+# Checksum generation (good practice for releases)
+checksum:
+  name_template: 'checksums.txt'
+
+# Snapshot configuration (for development/test builds)
+snapshot:
+  name_template: "{{ incpatch .Version }}-next" # Creates versions like 0.1.0-next, 0.1.1-next etc.
+
+# Changelog generation (can be skipped for local/snapshot builds if not needed)
+changelog:
+  skip: true
+
+# Optional: Signing configuration (more advanced, for official releases)
+# sign:
+#   artifacts: checksum
+
+# Optional: Docker image publishing (if you also want to publish Docker images)
+# dockers:
+#   - image_templates:
+#       - "yourdockerhubuser/provider-daemon:{{ .Tag }}"
+#       - "yourdockerhubuser/provider-daemon:latest"
+#     dockerfile: Dockerfile # Assumes Dockerfile in provider-daemon root
+#     build_flag_templates:
+#       - "--label=org.opencontainers.image.created={{.Date}}"
+#       - "--label=org.opencontainers.image.title={{.ProjectName}}"
+#       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+#       - "--label=org.opencontainers.image.version={{.Version}}"
+
+# Release configuration (primarily for GitHub releases)
+# release:
+#   github:
+#     owner: your-github-username
+#     name: dante-backend # or your specific repo name
+#   draft: false
+#   prerelease: auto 

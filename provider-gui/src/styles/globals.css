@@ -1,10 +1,45 @@
+@import url('https://fonts.googleapis.com/css2?family=Hubot+Sans:ital,wght@0,200..900;1,200..900&display=swap');
+
+:root {
+  --background: hsl(28, 15%, 87%);
+  --foreground: hsl(240, 10%, 3.9%);
+  --card: hsl(28, 15%, 92%);
+  --card-foreground: hsl(240, 10%, 3.9%);
+  --popover: hsl(28, 15%, 92%);
+  --popover-foreground: hsl(240, 10%, 3.9%);
+  --primary: hsl(0, 100%, 34%);
+  --primary-foreground: hsl(0, 0%, 98%);
+  --secondary: hsl(28, 15%, 82%);
+  --secondary-foreground: hsl(240, 5.9%, 10%);
+  --muted: hsl(28, 15%, 82%);
+  --muted-foreground: hsl(240, 3.8%, 46.1%);
+  --accent: hsl(0, 100%, 34%);
+  --accent-foreground: hsl(0, 0%, 98%);
+  --destructive: hsl(0, 84.2%, 60.2%);
+  --destructive-foreground: hsl(0, 0%, 98%);
+  --border: hsl(0, 0%, 0%);
+  --input: hsl(28, 15%, 85%);
+  --ring: hsl(0, 100%, 34%);
+  --radius: 0.5rem;
+
+  --chart-1: hsl(12, 76%, 61%);
+  --chart-2: hsl(173, 58%, 39%);
+  --chart-3: hsl(197, 37%, 24%);
+  --chart-4: hsl(43, 74%, 66%);
+  --chart-5: hsl(27, 87%, 67%);
+
+  --font-family-sans: 'Hubot Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-family-mono: 'Menlo', 'Monaco', 'Consolas', 'Liberation Mono', 'Courier New', monospace;
+}
+
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
-    sans-serif;
-  background-color: #f4f7f9;
-  color: #333;
+  font-family: var(--font-family-sans);
+  background-color: var(--background);
+  color: var(--foreground);
   line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 #root {
@@ -13,28 +48,182 @@ body {
   min-height: 100vh;
 }
 
-.container {
-  padding: 20px;
-  max-width: 1200px;
-  margin: 0 auto;
+.app-container {
+  width: 100%;
+  max-width: 900px;
+  margin: 2rem auto;
+  padding: 2rem;
+  box-sizing: border-box;
 }
 
-h1 {
-  color: #2c3e50;
+.header {
+  text-align: center;
+  margin-bottom: 2.5rem;
+  border-bottom: 2px solid var(--border);
+  padding-bottom: 1.5rem;
+}
+
+.header h1 {
+  font-size: 2.8rem;
+  font-weight: 700;
+  color: var(--primary); /* Red for main title */
+  margin-bottom: 0.25rem;
+  letter-spacing: -0.5px;
+}
+
+.header p {
+  font-size: 1.1rem;
+  color: var(--muted-foreground);
+}
+
+.controls-card {
+  background-color: var(--card);
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  padding: 2rem;
+  margin-bottom: 2rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.status-display {
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  text-align: center;
+  font-weight: 500;
+  font-size: 1.1rem;
+}
+
+.status-on {
+  background-color: hsl(145, 63%, 42%); /* A distinct green */
+  color: var(--primary-foreground);
+  border-color: hsl(145, 63%, 32%);
+}
+
+.status-off {
+  background-color: var(--secondary);
+  color: var(--secondary-foreground);
+  border-color: hsl(28, 15%, 72%);
+}
+
+.status-error {
+  background-color: var(--destructive);
+  color: var(--destructive-foreground);
+  border-color: hsl(0, 84.2%, 50.2%);
+}
+
+.controls {
+  display: flex;
+  justify-content: center;
+  gap: 1.5rem;
 }
 
 button {
-  background-color: #3498db;
-  color: white;
-  border: none;
-  padding: 10px 15px;
-  border-radius: 4px;
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+  border: 2px solid var(--border);
+  padding: 0.8rem 1.8rem;
+  border-radius: var(--radius);
   cursor: pointer;
-  font-size: 1em;
+  font-size: 1rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  transition: background-color 0.2s ease-in-out, transform 0.1s ease-in-out, box-shadow 0.2s ease-in-out;
+  box-shadow: 0 2px 0 0 var(--border); /* Simple 3D effect */
 }
 
 button:hover {
-  background-color: #2980b9;
+  background-color: hsl(0, 100%, 29%); /* Darker red */
+  transform: translateY(-2px);
+  box-shadow: 0 4px 0 0 var(--border);
+}
+
+button:active {
+  transform: translateY(0px);
+  box-shadow: 0 1px 0 0 var(--border);
+}
+
+button:disabled {
+  background-color: var(--muted);
+  color: var(--muted-foreground);
+  border-color: var(--secondary);
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: 0 2px 0 0 var(--secondary);
+}
+
+.logs-card {
+  background-color: var(--card);
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0; /* Remove padding, add to inner elements */
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.logs-header {
+  padding: 1rem 1.5rem;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--card-foreground);
+  border-bottom: 2px solid var(--border);
+}
+
+.logs-container {
+  padding: 1.5rem;
+  height: 450px;
+  overflow-y: auto;
+  font-family: var(--font-family-mono);
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: var(--foreground); /* Default log text */
+}
+
+.log-entry {
+  padding: 0.3rem 0;
+  border-bottom: 1px solid var(--secondary);
+  display: flex; /* For timestamp and message alignment */
+}
+
+.log-entry:last-child {
+  border-bottom: none;
+}
+
+.log-timestamp {
+  color: var(--muted-foreground);
+  margin-right: 10px;
+  flex-shrink: 0; /* Prevent timestamp from shrinking */
+}
+
+.log-message {
+  word-break: break-all; /* Prevent long messages from overflowing */
+}
+
+.log-stdout {
+  color: var(--foreground); /* Standard output */
+}
+
+.log-stderr {
+  color: hsl(30, 90%, 50%); /* Orange/dark yellow for stderr */
+}
+
+.log-status {
+  color: hsl(200, 70%, 45%); /* Blue for status */
+  font-weight: 500;
+}
+
+.log-error {
+  color: var(--destructive); /* Use destructive color for errors */
+  font-weight: bold;
+}
+
+.status-badge {
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-weight: 500;
+  text-align: center;
+  margin-bottom: 1rem;
 }
 
 /* Add more global styles or component-specific styles in separate files */ 
