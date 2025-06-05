@@ -472,6 +472,21 @@ func (d *Detector) getAMDMetrics(ctx context.Context) ([]GPUMetrics, error) {
 
 // getAppleMetrics gets real-time metrics for Apple GPUs
 func (d *Detector) getAppleMetrics(ctx context.Context) ([]GPUMetrics, error) {
-	// Simplified implementation for Apple GPUs
+	// Placeholder for Apple GPU metrics
 	return []GPUMetrics{}, nil
+}
+
+// DetectGPUsOnce performs an immediate, one-time detection of GPUs and returns them.
+// This is useful for CLI commands or synchronous requests.
+func (d *Detector) DetectGPUsOnce() ([]GPUInfo, error) {
+	d.logger.Info("Performing one-time GPU detection for CLI...")
+	// Call the existing comprehensive detection method.
+	// DetectGPUs updates d.gpus internally and returns them.
+	gpus, err := d.DetectGPUs(context.Background())
+	if err != nil {
+		d.logger.Error("One-time GPU detection failed during DetectGPUs call", zap.Error(err))
+		return nil, err
+	}
+	d.logger.Info("One-time GPU detection completed via DetectGPUs call", zap.Int("gpus_found", len(gpus)))
+	return gpus, nil
 }
